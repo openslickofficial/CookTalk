@@ -1,0 +1,9 @@
+.env
+node_modules/
+__pycache__/
+venv/
+*.mp3
+baseline_results.jsonl
+streaming_results.jsonl
+.venv/
+*.pyc

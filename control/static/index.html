@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CookTalk — Baseline</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      max-width: 520px;
+      width: 100%;
+      padding: 2rem;
+    }
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 0.3rem;
+      color: #e94560;
+    }
+    .subtitle {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 1.5rem;
+    }
+    .input-group {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #16213e;
+      color: #e0e0e0;
+      font-size: 1rem;
+    }
+    input[type="text"]:focus { outline: 2px solid #e94560; border-color: transparent; }
+    button {
+      padding: 0.75rem 1.2rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-send { background: #e94560; color: #fff; }
+    .btn-mic { background: #0f3460; color: #e0e0e0; font-size: 1.2rem; width: 48px; }
+    .btn-mic.recording { background: #e94560; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .status {
+      padding: 0.6rem 1rem;
+      background: #16213e;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: #aaa;
+      min-height: 2.5rem;
+      margin-bottom: 1rem;
+    }
+    .latency-log {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #0a0a1a;
+      border-radius: 8px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      color: #53d769;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .latency-log .entry { margin-bottom: 0.3rem; }
+    .latency-log .entry.error { color: #e94560; }
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+    .suggestions button {
+      font-size: 0.75rem;
+      padding: 0.4rem 0.8rem;
+      background: #16213e;
+      color: #aaa;
+      border: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🍳 CookTalk</h1>
+    <p class="subtitle">Phase 1 Baseline — Non-streaming Rime TTS latency test</p>
+
+    <div class="suggestions">
+      <button onclick="fillQ('How long do I boil an egg?')">🥚 Boil an egg</button>
+      <button onclick="fillQ('How do I cook rice?')">🍚 Cook rice</button>
+      <button onclick="fillQ('How do I cook pasta al dente?')">🍝 Pasta al dente</button>
+      <button onclick="fillQ('How do I sear a steak?')">🥩 Sear a steak</button>
+    </div>
+
+    <div class="input-group">
+      <input type="text" id="question" placeholder="Ask a cooking question..." />
+      <button class="btn-mic" id="micBtn" title="Speak">🎤</button>
+      <button class="btn-send" id="sendBtn">Ask</button>
+    </div>
+
+    <div class="status" id="status">Ready. Type a question or press 🎤 to speak.</div>
+
+    <div class="latency-log" id="log"></div>
+  </div>
+
+  <script>
+    const questionEl = document.getElementById('question');
+    const sendBtn    = document.getElementById('sendBtn');
+    const micBtn     = document.getElementById('micBtn');
+    const statusEl   = document.getElementById('status');
+    const logEl      = document.getElementById('log');
+
+    let isRecording = false;
+    let recognition = null;
+
+    function fillQ(text) {
+      questionEl.value = text;
+      questionEl.focus();
+    }
+
+    function logEntry(msg, isError = false) {
+      const div = document.createElement('div');
+      div.className = 'entry' + (isError ? ' error' : '');
+      div.textContent = msg;
+      logEl.prepend(div);
+    }
+
+    // ---------- Speech Recognition (browser built-in) ----------
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        questionEl.value = transcript;
+        statusEl.textContent = `Heard: "${transcript}"`;
+        stopMic();
+        doSynthesize();
+      };
+      recognition.onerror = (event) => {
+        logEntry(`Mic error: ${event.error}`, true);
+        stopMic();
+      };
+      recognition.onend = () => stopMic();
+    } else {
+      micBtn.disabled = true;
+      micBtn.title = 'Speech recognition not supported in this browser';
+    }
+
+    function startMic() {
+      if (!recognition) return;
+      isRecording = true;
+      micBtn.classList.add('recording');
+      micBtn.textContent = '⏹';
+      statusEl.textContent = 'Listening...';
+      recognition.start();
+    }
+
+    function stopMic() {
+      isRecording = false;
+      micBtn.classList.remove('recording');
+      micBtn.textContent = '🎤';
+      if (recognition) try { recognition.stop(); } catch(e) {}
+    }
+
+    micBtn.addEventListener('click', () => {
+      if (isRecording) stopMic();
+      else startMic();
+    });
+
+    // ---------- Synthesize ----------
+    sendBtn.addEventListener('click', doSynthesize);
+    questionEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSynthesize(); });
+
+    async function doSynthesize() {
+      const text = questionEl.value.trim();
+      if (!text) return;
+
+      sendBtn.disabled = true;
+      statusEl.textContent = 'Synthesizing speech via Rime...';
+
+      const t0 = performance.now();
+
+      try {
+        const resp = await fetch('/api/synthesize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+
+        if (!resp.ok) {
+          const errText = await resp.text();
+          throw new Error(`Server error ${resp.status}: ${errText}`);
+        }
+
+        const audioBlob = await resp.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+
+        // t1 = when audio actually starts playing
+        audio.addEventListener('playing', () => {
+          const t1 = performance.now();
+          const latency = t1 - t0;
+
+          const serverLatency = resp.headers.get('X-Server-Latency-Ms') || '?';
+          const msg = `✅ E2E: ${latency.toFixed(0)} ms | Server TTS: ${serverLatency} ms | "${text}"`;
+
+          console.log(`[CookTalk Baseline] ${msg}`);
+          logEntry(msg);
+          statusEl.textContent = `Latency: ${latency.toFixed(0)} ms (server TTS: ${serverLatency} ms)`;
+
+          // Report to backend for JSONL logging
+          fetch('/api/report-latency', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: text,
+              latency_ms: Math.round(latency),
+              timestamp: new Date().toISOString(),
+            }),
+          }).catch(e => console.warn('Failed to report latency:', e));
+        }, { once: true });
+
+        audio.play().catch(e => {
+          logEntry(`Playback error: ${e.message}`, true);
+          statusEl.textContent = 'Playback failed — click somewhere on the page first (autoplay policy).';
+        });
+
+      } catch (err) {
+        logEntry(`Error: ${err.message}`, true);
+        statusEl.textContent = `Error: ${err.message}`;
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
