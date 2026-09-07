@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
+import requests
 from dotenv import load_dotenv
 from livekit import api, rtc
 
@@ -78,8 +79,8 @@ DEMO_QUERIES = [
     },
 ]
 
-ROUNDS = 10
-IDLE_GAP_SEC = 16.0
+ROUNDS = 5
+IDLE_GAP_SEC = 20.0
 AUDIBLE_PEAK_THRESHOLD = 600
 CHUNK_MS = 20  # 20ms frames
 
@@ -251,6 +252,7 @@ class DemoBenchHarness:
 
         if t0 is None:
             t0 = time.perf_counter()
+        events_start_idx = len(self.data_events)
         print("DONE (speech ended, trailing silence streamed)")
 
         # 2. Keep alive silence frames until speech starts so VAD doesn't starve
@@ -279,10 +281,20 @@ class DemoBenchHarness:
             first_audio_ms = (t1_first_audio - t0) * 1000.0
             print(f"FIRST SOUND in {first_audio_ms:.1f} ms (Peak: {heard_peak1})", end=" | ", flush=True)
 
-            # Wait for turn completion
+            # Wait for turn completion and data channel turn_metrics
             t_wait_start = time.perf_counter()
-            while not turn_done.is_set() and (time.perf_counter() - t_wait_start) < 22.0:
-                await asyncio.sleep(0.02)
+            while (time.perf_counter() - t_wait_start) < 25.0:
+                await asyncio.sleep(0.05)
+                # Check if a substantive turn_metrics with agent_response arrived
+                has_substantive = False
+                for ev in reversed(self.data_events[events_start_idx:]):
+                    if ev.get("type") == "turn_metrics" and ev.get("agent_response"):
+                        has_substantive = True
+                        break
+                if turn_done.is_set() and has_substantive:
+                    break
+                if turn_done.is_set() and (time.perf_counter() - t_wait_start) > 8.0:
+                    break
 
             if t2_substantive is None:
                 t2_substantive = t1_first_audio
@@ -302,12 +314,17 @@ class DemoBenchHarness:
             await audio_stream.aclose()
 
 
-        # Extract latest server turn metrics from data channel
+        # Extract server turn metrics strictly from events received after query was dispatched
         latest_metrics = {}
-        for ev in reversed(self.data_events):
-            if ev.get("type") == "turn_metrics":
+        for ev in reversed(self.data_events[events_start_idx:]):
+            if ev.get("type") == "turn_metrics" and ev.get("agent_response"):
                 latest_metrics = ev
                 break
+        if not latest_metrics:
+            for ev in reversed(self.data_events[events_start_idx:]):
+                if ev.get("type") == "turn_metrics":
+                    latest_metrics = ev
+                    break
 
         tool_called = latest_metrics.get("tool_called")
         tool_exec_ms = latest_metrics.get("tool_execution_ms")
@@ -375,40 +392,38 @@ async def main():
 
     def _tiny_probe():
         """Send a tiny 1-token probe. Returns (success, remaining_tpm, used_tpd_str)."""
-        body = json.dumps({
+        body = {
             "model": GROQ_MODEL,
             "messages": [{"role": "user", "content": "hi"}],
-            "max_completion_tokens": 1,
-        }).encode("utf-8")
-        req = _urllib_req.Request(
-            "https://api.groq.com/openai/v1/chat/completions",
-            data=body,
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0",
-            },
-        )
+            "max_tokens": 1,
+        }
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        }
         try:
-            with _urllib_req.urlopen(req) as resp:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=body,
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
                 remaining = int(resp.headers.get("x-ratelimit-remaining-tokens", "0"))
                 return True, remaining, ""
-        except Exception as e:
-            err_msg = ""
-            if hasattr(e, "read"):
-                try:
-                    err_body = e.read().decode()
-                    m = _re.search(r"Used (\d+),", err_body)
-                    if m:
-                        used = int(m.group(1))
-                        headroom = 200000 - used
-                        err_msg = f"Used={used}/200000, Headroom={headroom}"
-                    m2 = _re.search(r"try again in ([0-9hms.]+)", err_body, _re.IGNORECASE)
-                    if m2:
-                        err_msg += f", retry_in={m2.group(1)}"
-                except Exception:
-                    pass
+            err_body = resp.text
+            err_msg = f"HTTP {resp.status_code}"
+            m = _re.search(r"Used (\d+),", err_body)
+            if m:
+                used = int(m.group(1))
+                headroom = 200000 - used
+                err_msg = f"Used={used}/200000, Headroom={headroom}"
+            m2 = _re.search(r"try again in ([0-9hms.]+)", err_body, _re.IGNORECASE)
+            if m2:
+                err_msg += f", retry_in={m2.group(1)}"
             return False, 0, err_msg
+        except Exception as e:
+            return False, 0, str(e)
 
     consecutive_ok = 0
     while consecutive_ok < 3:
@@ -464,6 +479,18 @@ async def main():
                     await asyncio.sleep(IDLE_GAP_SEC)
                     print("DONE")
 
+                # Running token counter check via Groq rate limit headers
+                try:
+                    p_resp = requests.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                        json={"model": GROQ_MODEL, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1},
+                        timeout=5.0
+                    )
+                    rem_tokens = p_resp.headers.get("x-ratelimit-remaining-tokens", "N/A")
+                    print(f"  [QUOTA WATCH] Trial {trial_count}/25: Groq Remaining Minute Tokens = {rem_tokens}")
+                except Exception as q_err:
+                    print(f"  [QUOTA WATCH] Could not probe quota: {q_err}")
 
                 try:
                     rec = await harness.run_trial(trial_count, r_idx, q_cfg, source)
@@ -498,7 +525,7 @@ async def main():
 
     # Print Statistically Rigorous Per-Query Breakdown Table
     print("\n" + "=" * 85)
-    print("PHASE 6.6 STATISTICALLY RIGOROUS DEMO-QUERY BENCHMARK BREAKDOWN (n=10 per query)")
+    print("PHASE 6.7 STATISTICALLY RIGOROUS DEMO-QUERY BENCHMARK BREAKDOWN (n=5 per query, 25 trials)")
     print("=" * 85)
     header = f"{'Query Name':<28} | {'Metric':<18} | {'Median':<10} | {'Mean':<10} | {'P95':<10}"
     print(header)

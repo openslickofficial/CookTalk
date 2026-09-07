@@ -507,6 +507,9 @@ class CookingCoPilot:
         async def get_recipe_ingredients(recipe_id: str | None = None) -> str:
             """Get full list of ingredients for a recipe (cacio_e_pepe, scrambled_eggs, ribeye_steak)."""
             target_id = recipe_id.strip().lower().replace(" ", "_") if recipe_id else copilot.active_recipe_id
+            if target_id in copilot.recipes:
+                copilot.active_recipe_id = target_id
+                copilot.current_step_index = 1
             recipe = copilot.recipes.get(target_id, copilot.active_recipe)
             ings = recipe.get("ingredients", [])
             if not ings:
