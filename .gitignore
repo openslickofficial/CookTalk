@@ -5,5 +5,8 @@ venv/
 *.mp3
 baseline_results.jsonl
 streaming_results.jsonl
+client_perceived_results.jsonl
 .venv/
 *.pyc
+dist/
+web/dist/

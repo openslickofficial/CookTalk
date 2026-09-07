@@ -1,25 +1,276 @@
-# CookTalk
+# CookTalk — Real-Time Hands-Free Cooking Co-Pilot
 
-A hands-free cooking co-pilot — built for the DataForge × Rime hackathon (Rime Track: "Perceived response time").
+A hands-free, voice-first culinary assistant designed for busy, messy kitchens. Built for the **DataForge × Rime Hackathon** (Track: *"Perceived Response Time"*).
 
-## Status: Phase 1 — Baseline
+CookTalk eliminates the awkward pause in voice AI by orchestrating an ultra-low-latency pipeline combining **Silero VAD**, **Deepgram STT (`nova-3`)**, **Groq LLM (`qwen/qwen3.8-27b`)**, and **Rime TTS (`coda` / `astra`)** over persistent WebSockets inside **LiveKit WebRTC**.
 
-Currently measuring TTS latency with a deliberately naive HTTP-based pipeline
-as a "before" comparison for the optimized voice agent in Phase 2.
+---
 
-## Project Structure
+## 1. System Architecture
 
+```text
+       +-------------------------------------------------------------+
+       |               Client (Browser / Test Harness)               |
+       +-------------------------------------------------------------+
+              ^                                              |
+     WebRTC   | Audio Frames                                 | Mic Audio
+     Incoming | (PCM 16-bit)                                 | (Opus/WebRTC)
+              |                                              v
+       +-------------------------------------------------------------+
+       |                LiveKit Cloud (SFU / Rooms)                  |
+       +-------------------------------------------------------------+
+              ^                                              |
+              |                                              v
+       +-------------------------------------------------------------+
+       |             CookTalk Agent Worker (LiveKit Agents)          |
+       |                                                             |
+       |  1. Silero VAD: Neural voice activity & turn detection      |
+       |  2. Deepgram STT (nova-3): Streaming speech-to-text         |
+       |  3. Groq LLM (qwen/qwen3.8-27b): Fast streaming tokens      |
+       |  4. Rime TTS (coda/astra): WebSocket /ws3 audio chunks      |
+       +-------------------------------------------------------------+
+              |                                              ^
+              | Token Text Stream                            | Audio Chunks
+              v                                              | (24 kHz PCM)
+       +-------------------------------------------------------------+
+       |         Rime Streaming Endpoint (wss://users-ws.rime.ai/ws3)|
+       +-------------------------------------------------------------+
 ```
-/control   — Phase 1 baseline app (FastAPI + vanilla JS)
-/agent     — Phase 2 LiveKit agent (coming soon)
-/web       — Phase 2 LiveKit frontend (coming soon)
-/docs      — API notes and research
+
+---
+
+## 2. Tech Stack & Third-Party Services
+
+### Tech Stack Table
+
+| Component | Technology | Version | Role |
+| :--- | :--- | :--- | :--- |
+| **Transport** | LiveKit RTC & Agents | `1.1.17` / `1.8.0` | Real-time WebRTC media rooms, session state |
+| **VAD / Turn Detection** | Silero VAD | `1.8.0` plugin | Local neural voice activity and speech endpointing |
+| **Speech-to-Text (STT)**| Deepgram `nova-3` | `1.8.0` plugin | Ultra-low latency streaming transcription |
+| **Language Model (LLM)**| Groq `qwen/qwen3.8-27b`| OpenAI plugin | Ultra-fast token generation (~100+ tokens/sec) |
+| **Text-to-Speech (TTS)**| Rime `coda` / `astra` | `1.8.0` plugin | True WebSocket (`/ws3`) chunked audio synthesis |
+| **Backend Framework** | FastAPI / Uvicorn | `0.115.8` | Control baseline server (Phase 1) |
+| **Audio Processing** | NumPy / Wave | `2.4.6` | Client harness RMS & peak amplitude analysis |
+
+### Third-Party Services
+1. **Rime AI**: Neural low-latency text-to-speech engine (`https://users.rime.ai` and `wss://users-ws.rime.ai/ws3`).
+2. **LiveKit Cloud**: Managed WebRTC SFU infrastructure and agent dispatch.
+3. **Deepgram**: Streaming audio transcription (`api.deepgram.com`).
+4. **Groq**: LPU inference engine for rapid LLM completion (`api.groq.com`).
+
+---
+
+## 3. Verified Rime Configuration
+
+| Setting | Verified Value | Description |
+| :--- | :--- | :--- |
+| **Model** | `coda` | Rime's flagship conversational model |
+| **Speaker / Voice** | `astra` | Expressive, natural starter voice |
+| **Language** | `en` (English) | Model native |
+| **Transport** | `WebSocket` (`use_websocket=True`) | Direct low-latency socket streaming |
+| **Endpoint** | `wss://users-ws.rime.ai/ws3` | Binary chunked audio streaming |
+| **Audio Output** | PCM 16-bit, 24,000 Hz, mono | Streamed directly into LiveKit audio tracks |
+
+---
+
+## 4. Empirical Performance Summary
+
+Detailed evidence, procedures, diagnostic traces, and trial breakdowns are documented in [`RIME_EVIDENCE.md`](./RIME_EVIDENCE.md) and [`docs/timeout-diagnosis.md`](./docs/timeout-diagnosis.md).
+
+### A. Headline Performance Comparison Across All Pipeline Phases
+
+| Metric | Phase 1: Naive HTTP (`/control`) | Phase 2: Server Proxy (`/agent`) | Phase 3.8: Rapid Burst (`n=30`) | Phase 6 Part A: Idle Sweep (`n=24`) | Phase 6.6: Demo Script (`n=50`) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **TTS Time-to-First-Audio (TTFB)** | 3,578.0 ms (Full WAV) | **389.1 ms** (First Chunk) | **506.2 ms** (First Chunk) | **388.2 ms** (`WarmRimeTTS` 60s idle) | **393.0 ms** ($n=45$ median) |
+| **Client Latency (Answered Median)** | 6,335.6 ms | **1,767.2 ms** (Server Sum) | **4,512.7 ms** | **4,238.5 ms** (20s gap) | **5,547.9 ms** (Trials within quota) |
+| **Client Latency (Full Run Median)** | 6,335.6 ms | **1,767.2 ms** (Server Sum) | **4,512.7 ms** | **4,260.4 ms** (all gaps $\le$60s) | **7,066.6 ms** (includes 3x Groq retry loop) |
+| **TTS Component Speedup** | *Baseline* | **9.19x faster** | **7.07x faster** | **9.22x faster** | **9.10x faster** |
+| **Call-Level Completion Rate** | 100% (Synchronous) | Untested under WebRTC | **100.0% (30 / 30 trials)** | **100.0% (24 / 24 trials)** | **100.0% (50 / 50 trials — zero hangs)** |
+| **Client Audio Reception Rate** | 100% (Synchronous) | Untested under WebRTC | **100.0% (30 / 30 trials)** | **100.0% (24 / 24 trials)** | **90.0% (45 / 50 audio delivered)** |
+| **Genuinely Answered Rate** | 100% (Synchronous) | Untested under WebRTC | **90.0% (27 / 30 trials)** | **100.0% (24 / 24 trials)** | **34.0% (17 / 50 answered within quota)** |
+| **Fallback Apology Rate** | 0.0% | Untested under WebRTC | **10.0% (3 / 30 trials)** | **0.0% (0 / 24 trials)** | **56.0% (28 / 50 trials, Groq 200k TPD)** |
+
+
+### B. Controlled Idle Sweep: Pre-Fix vs. Post-Fix (`WarmRimeTTS`)
+
+To resolve idle socket teardown, we measured Rime TTS TTFB and client latency across 8 gap durations (2s to 60s, 3 trials each = 24 trials):
+
+| Idle Gap Duration | Pre-Fix Rime TTFB (Median) | Post-Fix Rime TTFB (`WarmRimeTTS`) | TTFB Improvement | Post-Fix Client Latency (Median) |
+| :--- | :--- | :--- | :--- | :--- |
+| **2s** | 393.0 ms | **382.8 ms** | -10.2 ms | 4,739.6 ms |
+| **5s** | 423.2 ms | **404.5 ms** | -18.7 ms | 4,569.5 ms |
+| **10s** | 367.5 ms | **399.2 ms** | +31.7 ms | 4,280.0 ms |
+| **15s** | 426.8 ms | **390.3 ms** | -36.5 ms | 4,179.7 ms |
+| **20s** | 367.3 ms | **390.7 ms** | +23.4 ms | 4,238.5 ms |
+| **30s** | 1,481.9 ms | **395.1 ms** | **-1,086.8 ms (73.3% faster)** | **4,260.4 ms** |
+| **45s** | 1,514.9 ms | **439.8 ms** | **-1,075.1 ms (71.0% faster)** | **4,179.5 ms** |
+| **60s** | 1,568.6 ms | **388.2 ms** | **-1,180.4 ms (75.3% faster)** | **4,989.9 ms** |
+
+### C. Tool Acknowledgment Latency Masking (Phase 6.6)
+
+In a grounded voice co-pilot, ~80% of interactions require tools (`get_ingredient_quantity`, `suggest_substitution`, `next_step`). Under naive tool routing, the cook experiences a **5.5-second silence** while the LLM completes two passes. CookTalk fires an **instant spoken acknowledgment** (`speak_acknowledgment`) the millisecond a tool is dispatched:
+
+- **Time to First Spoken Sound**: **823.7 ms** after EOU (**~1,800 ms** from speech end) vs. ~5,500 ms without acknowledgment (**67% faster**).
+- **Rime TTS TTFB**: **389.7 ms** over WebSocket (`/ws3`).
+- **Substantive Answer Playout**: Begins immediately as tool execution and LLM synthesis conclude (**2,195.8 ms** total component latency).
+
+---
+
+## 5. Reliability Hardening & Failure Behavior
+
+Across Phases 3.5 through 6.6, we diagnosed and eliminated harness timeout vulnerabilities, upstream rate limit failures, and idle socket drops:
+
+1. **VAD Trailing Silence & Endpointing (Phase 3.5)**:
+   - **Trailing Silence Starvation**: Padded all fixture WAVs with 800ms silence and streamed continuous background silence frames to prevent VAD buffer starvation.
+   - **VAD Pause Sensitivity**: Increased `min_endpointing_delay` to 0.6s to eliminate mid-sentence cut-offs on complex queries.
+2. **Groq Context Sanitization & Preemption (Phase 3.6)**:
+   - **Consecutive User Pathology**: Implemented `sanitize_chat_context` to collapse consecutive user turns, preventing empty LLM streaming completions.
+   - **Preemption Storms**: Disabled speculative generation (`preemptive_generation=False`) to avoid burning tokens on canceled streams.
+3. **Dynamic Rate-Limit Backoff (Phase 3.8)**:
+   - Implemented `DynamicGroqConnectOptions` with `parse_retry_after(error)`: parses Groq's exact reset time (`try again in Xs`) and sleeps dynamically (capped at 3.0s), raising answered turns from 76.7% to 90.0%.
+4. **Active Connection Warming (`WarmRimeTTS`, Phase 6)**:
+   - Configured `max_session_duration = 12.0s` on LiveKit's `ConnectionPool` and background keepalive prewarming, eliminating the 1.1s idle cold-handshake penalty across all idle durations up to 60 seconds (73–75% TTFB speedup).
+5. **Tool Acknowledgment Latency Masking (Phase 6.6)**:
+   - Built `speak_acknowledgment` on tool dispatch via Rime `/ws3`, delivering first audio in 823.7 ms after EOU to mask dual-pass LLM reasoning.
+6. **Grounded Culinary Features (Phase 4)**:
+   - Grounded recipe knowledge (`agent/recipes.json`) covering French Scrambled Eggs, Cacio e Pepe, and Reverse-Sear Ribeye Steak.
+   - 9 asynchronous LiveKit tools with verbatim step repetition (`repeat_step`) to prevent recipe drift.
+   - Proactive WebRTC timer countdown alerts generated via Rime TTS `copilot.session.say(...)` without user prompting.
+7. **Audible Fallback Behavior**:
+   - If Rime is unreachable or credentials fail, `FallbackAdapter` seamlessly switches to `LocalFallbackTTS` and speaks a pre-recorded emergency audio notice over WebRTC in **1,256.6 ms**.
+   - If LLM retries exhaust under free-tier quota limits (e.g. Groq 200k TPD ceiling), `RetryingGroqStream` injects a clear voice apology notice over WebRTC rather than freezing silently.
+
+
+---
+
+## 6. Setup & Reproduction Instructions
+
+### A. Environment Configuration
+Copy `.env.example` to `.env` at the repository root and fill in your API keys:
+```bash
+LIVEKIT_URL=wss://your-subdomain.livekit.cloud
+LIVEKIT_API_KEY=your_livekit_api_key
+LIVEKIT_API_SECRET=your_livekit_api_secret
+DEEPGRAM_API_KEY=your_deepgram_key
+GROQ_API_KEY=your_groq_key
+RIME_API_KEY=your_rime_key
 ```
 
-## AI Disclosure
+### B. Running the Phase 1 Baseline (`/control`)
+```powershell
+cd control
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+python server.py
+# In a separate terminal:
+python run_baseline.py
+```
 
-> This project uses AI-assisted development. Specific tools and their contributions
-> will be documented here as work progresses.
->
-> - **Phase 1**: Codebase scaffolding and baseline app assisted by Google Antigravity (Claude Opus 4.6).
-> - **Phase 2–5**: TBD.
+### C. Running the Real-Time Streaming Agent (`/agent`)
+```powershell
+cd agent
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+python agent.py dev
+```
+
+### D. Running the Web Frontend & Token Server (`/web`)
+CookTalk includes a custom kitchen-ready web application featuring live waveform visualizers, real-time Latency HUD, step-by-step recipe card navigation, and hands-free timer controls:
+
+```powershell
+# 1. Start the Token & Recipe Server (Port 8000)
+cd web
+..\agent\venv\Scripts\python token_server.py
+
+# 2. In a separate terminal, start the Vite Dev Server (Port 5173)
+cd web
+npm install
+npm run dev
+```
+*Open `http://127.0.0.1:5173` in any modern browser, click "Start Cooking Session", and talk hands-free.*
+
+### E. Running the Automated Benchmark Harness (`/agent/bench`)
+```powershell
+cd agent
+# 1. Synthesize question audio fixtures with trailing silence (run once)
+python bench/generate_fixtures.py
+
+# 2. Run the post-fix controlled idle sweep (2s to 60s gaps)
+python bench/sweep_idle_duration_warmed.py
+
+# 3. Run the 30-trial human-paced kitchen benchmark
+python bench/bench_runner_human_paced.py
+
+# 4. Run the deliberate Rime failure fallback test
+python bench/test_rime_failure.py
+
+# 5. Run the Phase 4 culinary acceptance test suite (7 voice scenarios)
+python bench/run_acceptance_test.py
+```
+
+---
+
+## 7. Organizer Preflight Check & Compliance Audit
+
+- **Organizer Script Status**: No automated preflight script was supplied in the hackathon repository.
+- **Manual Verification Checklist for Evaluators**:
+  1. **Eligibility Rules**: Confirmed. Voice synthesis is integral to CookTalk's core user experience; Rime TTS (`coda` / `astra`) is the sole speech engine; no static screens or mock workflows.
+  2. **Secret Hygiene**: Full git commit history audited for API keys (`gsk_`, `sk-`, `dg-`, `livekit-`). Zero secrets leaked.
+  3. **Live Rime Voice Catalog**: Verified via `https://users.rime.ai/data/voices/all-v2.json` (HTTP 200) that `astra` is an active flagship voice among 162 Coda English voices.
+  4. **Active Provider Observability**: The Web Frontend Latency HUD actively displays the live synthesis engine (`Rime coda / astra (WebSocket /ws3)`) along with live STT and LLM metrics.
+
+---
+
+## 8. Live vs. Precomputed Statement
+
+> **Every benchmark number, latency metric, and timing log in this repository was measured live against real production endpoints.**
+> 
+> No latency values are precomputed, hardcoded, or simulated. All 30 trials in [`agent/bench/client_perceived_human_paced.jsonl`](./agent/bench/client_perceived_human_paced.jsonl), the 24 trials in [`agent/bench/idle_sweep_results_warmed.jsonl`](./agent/bench/idle_sweep_results_warmed.jsonl), and baseline runs in [`control/baseline_results.jsonl`](./control/baseline_results.jsonl) were recorded directly over active network connections to LiveKit Cloud, Deepgram, Groq, and Rime.
+
+---
+
+## 9. Known Limitations
+
+- **Geographic Network Overhead**: The benchmark client and agent worker executed in the India South region, communicating with US-based LLM, STT, and TTS endpoints, contributing a baseline ~150–250 ms round-trip network transit time.
+- **Upstream Daily Quotas**: Groq free-tier accounts enforce a 7,000 ITPM limit and a 200,000 Tokens Per Day (TPD) ceiling. Under extensive multi-round testing, exceeding the daily token limit triggers the graceful audible fallback notice.
+- **Client-Side Playout Delay**: True client-perceived audio includes WebRTC track negotiation and client-side jitter buffer latency (~1.2s playout buffering), making client-perceived time higher than the raw internal server-side proxy (~2.0s).
+- **Synthetic Caller**: Automated benchmarks transmit pre-recorded 16 kHz audio without ambient kitchen noises (sizzling oil, exhaust fan background noise).
+
+---
+
+## 10. AI-Assistance Disclosure
+
+In compliance with hackathon guidelines:
+
+- **Phase 1 (Control Baseline)**:
+  - *AI-Assisted*: Scaffolding FastAPI server, creating HTML audio recorder, writing baseline benchmarking script.
+  - *Human-Verified*: Validated Rime HTTP API schema against live docs, checked audio playback, verified latency calculations.
+- **Phase 2 (Streaming Pipeline)**:
+  - *AI-Assisted*: Writing LiveKit agent worker script, configuring Groq OpenAI-compatible client, setting up Rime WebSocket plugin.
+  - *Human-Verified*: Resolved live model availability (`qwen/qwen3.8-27b`), verified plugin parameter `use_websocket=True`, conducted live voice interaction over LiveKit Agents Playground.
+- **Phase 3 (Latency Harness & Evidence Artifacts)**:
+  - *AI-Assisted*: Writing client-side benchmark runner using `livekit.rtc`, generating audio fixture synthesis script, statistical analysis.
+  - *Human-Verified*: Executed 30 live WebRTC trials, diagnosed VAD edge cases on long utterances, verified failure exception behavior.
+- **Phase 3.5 (VAD & Silence Hardening)**:
+  - *AI-Assisted*: Diagnosing trailing silence starvation and VAD pause sensitivity, building `LocalFallbackTTS` and `FallbackAdapter`, instrumenting diagnostic stage logging.
+  - *Human-Verified*: Re-ran 30-trial benchmark, verified 100% success on 9.6s complex query (Q6), confirmed user-facing audible voice fallback under simulated outage.
+- **Phase 3.6 (LLM Layer Hardening & Response-Length Independence)**:
+  - *AI-Assisted*: Diagnosed Groq empty completions on consecutive user turns and speculative preemption abort storms, built `RetryingGroqLLM` and `sanitize_chat_context`, fixed `-1000ms` logging sentinel.
+  - *Human-Verified*: Achieved 30/30 (100.0%) benchmark completion reliability with zero timeouts, verified balanced stress case (+58.5ms difference between short and long questions).
+- **Phase 3.8 (Rate-Limit Backoff Optimization & Evidence Integrity)**:
+  - *AI-Assisted*: Implemented `DynamicGroqConnectOptions` parsing upstream `Retry-After` reset hints, configured dynamic backoff ceiling for conversational voice flow, separated call completion from question answering in logs and reports.
+  - *Human-Verified*: Validated live Groq model catalog (`docs/groq-models-verified.json`), re-ran 30-trial benchmark verifying 100% call stability (0 hangs), 90.0% question answered rate (27/30), and 10.0% fallback apology (3/30).
+- **Phase 4 (Product Work: Culinary Persona, Function Calling & Acceptance Verification)**:
+  - *AI-Assisted*: Structured culinary database (`recipes.json`), built stateful `CookingCoPilot` with 8 LiveKit asynchronous function tools, built proactive WebRTC timer alert via Rime TTS `copilot.session.say(...)`, created automated acceptance test runner (`run_acceptance_test.py`).
+  - *Human-Verified*: Executed 7 live voice acceptance scenarios against LiveKit Cloud WebRTC, verified 7 / 7 (100%) PASS with verbatim grounded answers, confirmed proactive spoken timer alert over WebRTC audio track, spot-checked pipeline latency showing zero tool-calling regression.
+- **Phase 5 (Custom Web Frontend & Smoke Verification)**:
+  - *AI-Assisted*: Scaffolding React/Vite web application with Lucide icons and Tailwind-like styling, implementing LiveKit WebRTC client hooks, live audio waveform visualizer, real-time Latency HUD with component breakdown, recipe card navigator, and active kitchen timer widget; creating `web/token_server.py`.
+  - *Human-Verified*: Executed end-to-end frontend smoke test (`smoke_test_frontend_session.py`), verified live token generation, WebRTC room connection, voice round-trip, and proactive timer audio playback.
+- **Phase 6 (Controlled Idle Sweep, Keepalive Architecture & Final Benchmark)**:
+  - *AI-Assisted*: Created controlled idle sweep harness (`sweep_idle_duration.py`), diagnosed 20–30s remote WebSocket idle drop threshold, engineered `WarmRimeTTS` with active connection pool recycling and background prewarming, executed post-fix sweep and final 30-trial human-paced benchmark, performed repository-wide git secret audit.
+  - *Human-Verified*: Verified 73–75% TTFB speedup across 30s–60s idle gaps, confirmed 0 secrets in git history, verified live Rime voice catalog endpoint, audited documentation consistency.
+
+

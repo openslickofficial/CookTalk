@@ -87,14 +87,17 @@ llm = openai.LLM(
 )
 ```
 
-### Verified Groq Models on Live Account
-When querying `https://api.groq.com/openai/v1/models` directly with the live key:
-- Legacy model string `llama-3.1-8b-instant` returned HTTP 404 (model not found / deprecated checkpoint).
-- `groq/compound-mini` is an internal web-searching agentic model on Groq that triggered HTTP 413 (`Request Entity Too Large`) during multi-turn culinary questions.
-- `openai/gpt-oss-120b` returned empty streaming deltas in LiveKit turn loops.
-- **`qwen/qwen3.8-27b`** (**Verified & Working**):
-  - Benchmarked across all 5 test queries: **~440–520 ms TTFT**.
+### Verified Groq Models on Live Account (Confirmed 2026-09-06)
+When querying `https://api.groq.com/openai/v1/models` live with the active API key, Groq currently serves 14 models:
+- **`qwen/qwen3.8-27b`** (**Verified & Active in Production**):
+  - Confirmed live on Groq's API endpoint.
+  - Organization Tier: `on_demand` pay-as-you-go service tier (`org_01m1vkkmzqe0793r7kyxeqe87s`).
+  - Active rate limits: 1,000 requests limit, 8,000 Tokens Per Minute (TPM) limit.
+  - Parameter configuration: Enforced `max_completion_tokens=60` to ensure requests never trip Groq's 1,000 output tokens per minute (OTPM) ceiling.
+  - Benchmarked across all test queries: **~450–650 ms TTFT**.
   - Direct streaming, zero reasoning `<think>` clutter, adheres strictly to the 1-2 sentence voice prompt, and integrates cleanly with LiveKit's token stream and Rime TTS.
+- Other live models returned by Groq endpoint: `qwen/qwen3.6-27b`, `groq/compound`, `groq/compound-mini`, `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `whisper-large-v3`, `meta-llama/llama-prompt-guard-2-86m`.
+- Legacy model strings: `llama-3.1-8b-instant` returned HTTP 404 (deprecated/unlisted on this tier). `groq/compound-mini` triggered HTTP 413 during multi-turn prompts.
 
 ---
 
