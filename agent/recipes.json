@@ -216,5 +216,381 @@
         "timer_label": "steak resting"
       }
     ]
+  },
+  "chocolate_chip_cookies": {
+    "id": "chocolate_chip_cookies",
+    "name": "Brown Butter Sea Salt Chocolate Chip Cookies",
+    "description": "Chewy center, crispy edges, nutty browned butter, and melted dark chocolate pools.",
+    "ingredients": [
+      {
+        "name": "unsalted butter",
+        "quantity": "1",
+        "unit": "cup (2 sticks), browned and cooled"
+      },
+      {
+        "name": "dark brown sugar",
+        "quantity": "1",
+        "unit": "cup, packed"
+      },
+      {
+        "name": "granulated sugar",
+        "quantity": "0.5",
+        "unit": "cup"
+      },
+      {
+        "name": "all-purpose flour",
+        "quantity": "2.25",
+        "unit": "cups"
+      },
+      {
+        "name": "large eggs",
+        "quantity": "2",
+        "unit": "room temperature (1 whole egg + 1 yolk)"
+      },
+      {
+        "name": "dark chocolate chunks",
+        "quantity": "200",
+        "unit": "grams, roughly chopped"
+      },
+      {
+        "name": "flaky sea salt",
+        "quantity": "1",
+        "unit": "pinch for topping"
+      }
+    ],
+    "substitutions": {
+      "dark brown sugar": "Light brown sugar with a teaspoon of molasses, or coconut sugar.",
+      "dark chocolate chunks": "Semi-sweet chocolate chips or chopped milk chocolate.",
+      "all-purpose flour": "1:1 gluten-free baking flour blend with xanthan gum."
+    },
+    "steps": [
+      {
+        "step_number": 1,
+        "instruction": "Melt two sticks of butter in a saucepan over medium heat for five minutes until foamy, nutty, and golden brown.",
+        "timer_seconds": 300,
+        "timer_label": "brown butter simmer"
+      },
+      {
+        "step_number": 2,
+        "instruction": "Whisk cooled browned butter with brown sugar and granulated sugar for two minutes until smooth and glossy.",
+        "timer_seconds": 120,
+        "timer_label": "sugar butter whisk"
+      },
+      {
+        "step_number": 3,
+        "instruction": "Beat in the whole egg, extra yolk, and vanilla extract until the mixture turns pale and ribbony.",
+        "timer_seconds": null,
+        "timer_label": null
+      },
+      {
+        "step_number": 4,
+        "instruction": "Fold in flour and baking soda with a spatula until just combined, then gently fold in chocolate chunks.",
+        "timer_seconds": null,
+        "timer_label": null
+      },
+      {
+        "step_number": 5,
+        "instruction": "Bake scooped dough balls at 375 degrees Fahrenheit for ten minutes until edges are golden and centers soft.",
+        "timer_seconds": 600,
+        "timer_label": "cookie bake"
+      },
+      {
+        "step_number": 6,
+        "instruction": "Sprinkle immediately with flaky sea salt and cool on the pan for five minutes before transferring.",
+        "timer_seconds": 300,
+        "timer_label": "cookie pan cool"
+      }
+    ]
+  },
+  "chicken_tikka_masala": {
+    "id": "chicken_tikka_masala",
+    "name": "Creamy Spiced Chicken Tikka Masala",
+    "description": "Tender marinated chicken pieces simmered in an aromatic, velvety spiced tomato-cream curry sauce.",
+    "ingredients": [
+      {
+        "name": "boneless chicken thighs",
+        "quantity": "600",
+        "unit": "grams, cut into bite-sized pieces"
+      },
+      {
+        "name": "plain whole milk yogurt",
+        "quantity": "0.5",
+        "unit": "cup for marinade"
+      },
+      {
+        "name": "garam masala",
+        "quantity": "2",
+        "unit": "tablespoons divided"
+      },
+      {
+        "name": "canned crushed tomatoes",
+        "quantity": "400",
+        "unit": "grams (1 can)"
+      },
+      {
+        "name": "heavy cream",
+        "quantity": "0.75",
+        "unit": "cup"
+      },
+      {
+        "name": "fresh garlic and ginger",
+        "quantity": "2",
+        "unit": "tablespoons each, minced into paste"
+      }
+    ],
+    "substitutions": {
+      "heavy cream": "Full-fat coconut milk or soaked blended cashew paste for a rich dairy-free sauce.",
+      "chicken thighs": "Paneer cubes, extra-firm pressed tofu, or boneless chicken breast.",
+      "plain yogurt": "Greek yogurt thinned with a tablespoon of lemon juice."
+    },
+    "steps": [
+      {
+        "step_number": 1,
+        "instruction": "Toss chicken with yogurt, garlic-ginger paste, garam masala, and salt, then marinate for at least twenty minutes.",
+        "timer_seconds": 1200,
+        "timer_label": "chicken yogurt marinade"
+      },
+      {
+        "step_number": 2,
+        "instruction": "Sear marinated chicken in a smoking hot skillet or under high broiler for seven minutes until charred in spots.",
+        "timer_seconds": 420,
+        "timer_label": "chicken tikka sear"
+      },
+      {
+        "step_number": 3,
+        "instruction": "In a deep pan, saute onions, cumin, coriander, and remaining ginger-garlic in two tablespoons of butter for five minutes.",
+        "timer_seconds": 300,
+        "timer_label": "aromatic base saute"
+      },
+      {
+        "step_number": 4,
+        "instruction": "Pour in crushed tomatoes and simmer on low heat for ten minutes until the sauce thickens and oil separates.",
+        "timer_seconds": 600,
+        "timer_label": "tomato sauce simmer"
+      },
+      {
+        "step_number": 5,
+        "instruction": "Stir in heavy cream and cooked chicken pieces, simmering together for five minutes until rich and fragrant.",
+        "timer_seconds": 300,
+        "timer_label": "curry final simmer"
+      }
+    ]
+  },
+  "fluffy_buttermilk_pancakes": {
+    "id": "fluffy_buttermilk_pancakes",
+    "name": "Golden Diner-Style Fluffy Buttermilk Pancakes",
+    "description": "Thick, cloud-soft pancakes with crispy golden edges and warm melted butter.",
+    "ingredients": [
+      {
+        "name": "all-purpose flour",
+        "quantity": "2",
+        "unit": "cups"
+      },
+      {
+        "name": "buttermilk",
+        "quantity": "2",
+        "unit": "cups, shaken"
+      },
+      {
+        "name": "large eggs",
+        "quantity": "2",
+        "unit": "lightly beaten"
+      },
+      {
+        "name": "melted butter",
+        "quantity": "0.25",
+        "unit": "cup (4 tablespoons)"
+      },
+      {
+        "name": "baking powder",
+        "quantity": "2",
+        "unit": "teaspoons"
+      },
+      {
+        "name": "baking soda",
+        "quantity": "1",
+        "unit": "teaspoon"
+      }
+    ],
+    "substitutions": {
+      "buttermilk": "2 cups whole milk mixed with 2 tablespoons lemon juice or white vinegar, rested for 5 minutes.",
+      "all-purpose flour": "Whole wheat pastry flour or 1:1 gluten-free flour blend.",
+      "melted butter": "Coconut oil or neutral avocado oil."
+    },
+    "steps": [
+      {
+        "step_number": 1,
+        "instruction": "Whisk dry ingredients together in a large bowl, then whisk buttermilk, eggs, and melted butter in a separate jug.",
+        "timer_seconds": null,
+        "timer_label": null
+      },
+      {
+        "step_number": 2,
+        "instruction": "Pour wet ingredients into dry and fold gently until just combined; leave small flour lumps and rest batter for ten minutes.",
+        "timer_seconds": 600,
+        "timer_label": "pancake batter rest"
+      },
+      {
+        "step_number": 3,
+        "instruction": "Heat a cast iron griddle or nonstick pan over medium heat with a light sheen of butter for three minutes.",
+        "timer_seconds": 180,
+        "timer_label": "griddle preheat"
+      },
+      {
+        "step_number": 4,
+        "instruction": "Pour one third cup of batter per pancake and cook for three minutes until bubbles burst on top and edges look dry.",
+        "timer_seconds": 180,
+        "timer_label": "pancake first side"
+      },
+      {
+        "step_number": 5,
+        "instruction": "Flip gently and cook the second side for ninety seconds until puffed and golden brown.",
+        "timer_seconds": 90,
+        "timer_label": "pancake second side"
+      }
+    ]
+  },
+  "tuscan_garlic_salmon": {
+    "id": "tuscan_garlic_salmon",
+    "name": "Crispy Tuscan Salmon in Garlic Spinach Cream",
+    "description": "Crispy pan-seared salmon fillets bathed in sun-dried tomato and baby spinach cream sauce.",
+    "ingredients": [
+      {
+        "name": "salmon fillets",
+        "quantity": "2",
+        "unit": "fillets (approx 180g each), skin-on and patted dry"
+      },
+      {
+        "name": "sun-dried tomatoes",
+        "quantity": "0.5",
+        "unit": "cup, drained and sliced"
+      },
+      {
+        "name": "fresh baby spinach",
+        "quantity": "2",
+        "unit": "cups, packed"
+      },
+      {
+        "name": "garlic",
+        "quantity": "4",
+        "unit": "cloves, finely sliced"
+      },
+      {
+        "name": "heavy cream",
+        "quantity": "0.75",
+        "unit": "cup"
+      },
+      {
+        "name": "grated parmesan",
+        "quantity": "0.33",
+        "unit": "cup"
+      }
+    ],
+    "substitutions": {
+      "salmon fillets": "Trout fillets, sea bass, or thick boneless chicken breast cutlets.",
+      "heavy cream": "Half-and-half thickened with a teaspoon of cornstarch, or culinary coconut cream.",
+      "baby spinach": "Baby kale, Swiss chard leaves, or arugula."
+    },
+    "steps": [
+      {
+        "step_number": 1,
+        "instruction": "Season salmon fillets with salt and pepper, then sear skin-side down in a hot skillet with olive oil for five minutes until skin is crackling.",
+        "timer_seconds": 300,
+        "timer_label": "salmon skin crisp"
+      },
+      {
+        "step_number": 2,
+        "instruction": "Flip fillets and sear the flesh side for two minutes, then remove to a side plate.",
+        "timer_seconds": 120,
+        "timer_label": "salmon flesh sear"
+      },
+      {
+        "step_number": 3,
+        "instruction": "In the same pan, saute sliced garlic and sun-dried tomatoes in two tablespoons of butter for one minute until fragrant.",
+        "timer_seconds": 60,
+        "timer_label": "tuscan aromatic saute"
+      },
+      {
+        "step_number": 4,
+        "instruction": "Pour in heavy cream and parmesan, bring to a gentle simmer for two minutes until velvety and slightly reduced.",
+        "timer_seconds": 120,
+        "timer_label": "sauce reduction"
+      },
+      {
+        "step_number": 5,
+        "instruction": "Fold in baby spinach until wilted, nestle salmon back into the sauce, and spoon warm cream over the fish for sixty seconds.",
+        "timer_seconds": 60,
+        "timer_label": "salmon basting in sauce"
+      }
+    ]
+  },
+  "guacamole_street_tacos": {
+    "id": "guacamole_street_tacos",
+    "name": "Citrus Carne Asada Tacos with Fresh Guacamole",
+    "description": "Charred marinated flank steak on warm corn tortillas topped with fresh crushed guacamole and cilantro.",
+    "ingredients": [
+      {
+        "name": "flank or skirt steak",
+        "quantity": "500",
+        "unit": "grams"
+      },
+      {
+        "name": "fresh limes",
+        "quantity": "3",
+        "unit": "juiced for steak and guacamole"
+      },
+      {
+        "name": "ripe avocados",
+        "quantity": "2",
+        "unit": "Hass avocados, diced"
+      },
+      {
+        "name": "white corn tortillas",
+        "quantity": "8",
+        "unit": "small street taco size"
+      },
+      {
+        "name": "white onion and cilantro",
+        "quantity": "0.5",
+        "unit": "cup, finely minced"
+      }
+    ],
+    "substitutions": {
+      "flank steak": "Boneless chicken thighs, portobello mushroom caps, or spiced black beans.",
+      "corn tortillas": "Flour street tortillas or crisp lettuce wraps.",
+      "fresh limes": "Unsweetened bottled lime juice with a splash of orange juice."
+    },
+    "steps": [
+      {
+        "step_number": 1,
+        "instruction": "Marinate steak with lime juice, minced garlic, cumin, chili powder, and olive oil for fifteen minutes.",
+        "timer_seconds": 900,
+        "timer_label": "steak citrus marinade"
+      },
+      {
+        "step_number": 2,
+        "instruction": "Grill or sear steak in a smoking cast iron skillet for four minutes per side until charred and medium.",
+        "timer_seconds": 240,
+        "timer_label": "steak high heat sear"
+      },
+      {
+        "step_number": 3,
+        "instruction": "Rest steak on a cutting board for eight minutes, then slice thinly against the grain into small ribbons.",
+        "timer_seconds": 480,
+        "timer_label": "carne asada resting"
+      },
+      {
+        "step_number": 4,
+        "instruction": "Roughly mash avocados with lime juice, salt, diced onion, and cilantro until chunky.",
+        "timer_seconds": null,
+        "timer_label": null
+      },
+      {
+        "step_number": 5,
+        "instruction": "Warm corn tortillas on dry skillet for thirty seconds each, fill with steak ribbons, and crown with guacamole.",
+        "timer_seconds": 30,
+        "timer_label": "tortilla warming"
+      }
+    ]
   }
 }

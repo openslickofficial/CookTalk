@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
+  StartAudio,
   useVoiceAssistant,
   useRoomContext,
-  BarVisualizer,
+  useLocalParticipant,
 } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
 import {
@@ -148,6 +149,10 @@ export default function App() {
             className="space-y-6"
           >
             <RoomAudioRenderer />
+            <StartAudio
+              label="🔊 Audio Blocked by Browser Autoplay Policy — Click to Enable Sound"
+              className="w-full py-3 px-4 mb-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-2xl shadow-xl transition-all text-center flex items-center justify-center gap-2 cursor-pointer animate-pulse"
+            />
             <KitchenExperience />
           </LiveKitRoom>
         ) : (
@@ -215,7 +220,7 @@ function WelcomeView({ onConnect, isConnecting }: { onConnect: () => void; isCon
       <button
         onClick={onConnect}
         disabled={isConnecting}
-        className="px-8 py-4 rounded-2xl font-bold text-base bg-gradient-to-r from-orange-500 to-amber-500 text-neutral-950 hover:brightness-110 active:scale-95 transition-all shadow-xl shadow-orange-500/25 flex items-center gap-3"
+        className="px-8 py-4 rounded-2xl font-bold text-base bg-gradient-to-r from-orange-500 to-amber-500 text-neutral-950 hover:brightness-110 active:scale-95 transition-all shadow-xl shadow-orange-500/25 flex items-center gap-3 cursor-pointer"
       >
         <Mic className="w-5 h-5" />
         {isConnecting ? 'Connecting to Kitchen WebRTC...' : 'Enter Kitchen & Start Cooking'}
@@ -226,12 +231,16 @@ function WelcomeView({ onConnect, isConnecting }: { onConnect: () => void; isCon
 
 function KitchenExperience() {
   const room = useRoomContext();
-  const { state: agentState, audioTrack } = useVoiceAssistant();
+  const { state: agentState } = useVoiceAssistant();
+  const { isMicrophoneEnabled, localParticipant, lastMicrophoneError } = useLocalParticipant();
 
   const [recipes, setRecipes] = useState<Record<string, Recipe>>({});
   const [activeRecipeId, setActiveRecipeId] = useState<string>('scrambled_eggs');
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(1);
   const [activeTimers, setActiveTimers] = useState<ActiveTimer[]>([]);
+  const [micPrompt, setMicPrompt] = useState<string | null>(null);
+  const [textQuery, setTextQuery] = useState<string>('');
+  const [isQuerying, setIsQuerying] = useState<boolean>(false);
   const [metrics, setMetrics] = useState<LatencyMetrics>({
     eou_delay_ms: 1050,
     llm_ttft_ms: 680,
@@ -239,6 +248,18 @@ function KitchenExperience() {
     latency_ms: 2115,
     status: 'Connected',
   });
+
+  // Enable microphone immediately on joining the room
+  useEffect(() => {
+    if (localParticipant && !isMicrophoneEnabled) {
+      localParticipant.setMicrophoneEnabled(true).catch((err: any) => {
+        console.warn('Microphone permission request notice:', err);
+        setMicPrompt(
+          'Microphone permission was not granted by your browser. Please allow microphone access in your browser address bar to speak hands-free.'
+        );
+      });
+    }
+  }, [localParticipant]);
 
   // Fetch recipe catalog on mount
   useEffect(() => {
@@ -252,7 +273,7 @@ function KitchenExperience() {
   useEffect(() => {
     if (!room) return;
 
-    const handleDataReceived = (payload: Uint8Array, participant: any, kind: any, topic?: string) => {
+    const handleDataReceived = (payload: Uint8Array) => {
       try {
         const text = new TextDecoder().decode(payload);
         const data = JSON.parse(text);
@@ -296,12 +317,112 @@ function KitchenExperience() {
     };
   }, [room]);
 
+  const toggleMic = async () => {
+    if (!localParticipant) return;
+    try {
+      await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+      if (!isMicrophoneEnabled) {
+        setMicPrompt(null);
+      }
+    } catch (err: any) {
+      setMicPrompt(err?.message || 'Could not access microphone. Check browser permissions.');
+    }
+  };
+
+  const handleSelectRecipe = (id: string) => {
+    setActiveRecipeId(id);
+    setCurrentStepIndex(1);
+    if (room?.localParticipant) {
+      const payload = JSON.stringify({ type: 'select_recipe', recipe_id: id });
+      room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+    }
+  };
+
+  const sendVoiceQuery = async (queryText: string) => {
+    const text = queryText.trim();
+    if (!text || !room?.localParticipant) return;
+    setIsQuerying(true);
+    try {
+      const payload = JSON.stringify({ type: 'user_text', text });
+      await room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+      setTextQuery('');
+    } catch (err) {
+      console.error('Error sending query:', err);
+    } finally {
+      setIsQuerying(false);
+    }
+  };
+
   const activeRecipe = recipes[activeRecipeId] || recipes['scrambled_eggs'];
   const steps = activeRecipe?.steps || [];
   const currentStep = steps[currentStepIndex - 1] || steps[0];
 
   return (
     <div className="space-y-6">
+      {/* Live Microphone Status Bar */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-2xl bg-neutral-900 border border-neutral-800 shadow-md">
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-3 h-3 rounded-full ${
+              isMicrophoneEnabled
+                ? 'bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse'
+                : 'bg-red-500'
+            }`}
+          />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white">
+                {isMicrophoneEnabled ? 'Microphone Active (Hands-Free Listening)' : 'Microphone Muted / Offline'}
+              </span>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                  isMicrophoneEnabled
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                }`}
+              >
+                {isMicrophoneEnabled ? 'WebRTC Live' : 'Muted'}
+              </span>
+            </div>
+            <p className="text-[11px] text-neutral-400">
+              {isMicrophoneEnabled
+                ? 'Speak naturally: ask about steps, ingredients, substitutions, or timers.'
+                : 'Click Unmute to allow CookTalk to hear your voice questions.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleMic}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+              isMicrophoneEnabled
+                ? 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white border border-neutral-700'
+                : 'bg-gradient-to-r from-orange-500 to-amber-500 text-neutral-950 hover:brightness-110 shadow-md shadow-orange-500/20'
+            }`}
+          >
+            {isMicrophoneEnabled ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+            <span>{isMicrophoneEnabled ? 'Mute Mic' : 'Unmute Mic'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Mic Permission Guidance Alert */}
+      {(micPrompt || lastMicrophoneError) && (
+        <div className="bg-amber-950/40 border border-amber-800/80 text-amber-200 p-4 rounded-2xl flex items-start gap-3 text-xs">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-amber-300">Microphone Access Notice</p>
+            <p className="text-amber-200/90">
+              {micPrompt || lastMicrophoneError?.message || 'Please check microphone permissions in your browser.'}
+            </p>
+            <p className="text-neutral-400">
+              Tip: You can also click any of the quick voice prompt chips below to test the agent's spoken responses immediately!
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Voice Assistant State Hero Banner */}
       <div className="p-6 rounded-3xl bg-neutral-900/90 border border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden">
         <div className="flex items-center gap-5 z-10">
@@ -394,35 +515,93 @@ function KitchenExperience() {
         </div>
       </div>
 
+      {/* Quick Spoken Voice Prompt Chips & Query Box */}
+      <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-3 shadow-lg">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-neutral-300 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            Quick Voice Prompts (Agent Speaks Answer Aloud)
+          </span>
+          <span className="text-[11px] text-neutral-500">Click any chip or type below</span>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {[
+            'What ingredients do I need?',
+            'What is the next step?',
+            'Repeat step',
+            'What can I substitute for butter?',
+            'Set a timer for 2 minutes',
+          ].map((promptText, i) => (
+            <button
+              key={i}
+              onClick={() => sendVoiceQuery(promptText)}
+              disabled={isQuerying}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-neutral-800/90 border border-neutral-700 text-neutral-300 hover:bg-neutral-700 hover:text-white hover:border-amber-500/50 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>"{promptText}"</span>
+            </button>
+          ))}
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendVoiceQuery(textQuery);
+          }}
+          className="flex items-center gap-2 pt-1"
+        >
+          <input
+            type="text"
+            value={textQuery}
+            onChange={(e) => setTextQuery(e.target.value)}
+            placeholder="Ask CookTalk anything (e.g. 'Can I use butter instead?')..."
+            className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-orange-500 transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={isQuerying || !textQuery.trim()}
+            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-orange-500 to-amber-500 text-neutral-950 hover:brightness-110 disabled:opacity-40 transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>Ask & Speak</span>
+          </button>
+        </form>
+      </div>
+
       {/* Recipe Selector Row */}
       <div className="space-y-2">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400 px-1">
-          Select Recipe (or request via voice)
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+            Interactive Recipe Catalog ({Object.keys(recipes).length} Dishes)
+          </h3>
+          <span className="text-[11px] text-neutral-500">
+            Click any dish or ask CookTalk to switch dishes
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {Object.values(recipes).map((r) => {
             const isSelected = r.id === activeRecipeId;
             return (
               <button
                 key={r.id}
-                onClick={() => {
-                  setActiveRecipeId(r.id);
-                  setCurrentStepIndex(1);
-                }}
-                className={`p-4 rounded-2xl text-left transition-all border ${
+                onClick={() => handleSelectRecipe(r.id)}
+                className={`p-3.5 rounded-2xl text-left transition-all border cursor-pointer flex flex-col justify-between ${
                   isSelected
-                    ? 'bg-orange-950/30 border-orange-500/80 text-white shadow-lg shadow-orange-500/10'
-                    : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'
+                    ? 'bg-orange-950/40 border-orange-500 text-white shadow-lg shadow-orange-500/15 ring-2 ring-orange-500/30'
+                    : 'bg-neutral-900/90 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-neutral-800 text-neutral-300">
-                    {r.steps?.length || 4} Steps
-                  </span>
-                  {isSelected && <CheckCircle2 className="w-4 h-4 text-orange-400" />}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-neutral-800 text-neutral-300">
+                      {r.steps?.length || 4} Steps
+                    </span>
+                    {isSelected && <CheckCircle2 className="w-4 h-4 text-orange-400" />}
+                  </div>
+                  <h4 className="font-bold text-xs text-white line-clamp-1">{r.name}</h4>
+                  <p className="text-[11px] text-neutral-400 mt-1 line-clamp-2 leading-tight">{r.description}</p>
                 </div>
-                <h4 className="font-bold text-sm text-white line-clamp-1">{r.name}</h4>
-                <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{r.description}</p>
               </button>
             );
           })}
@@ -474,28 +653,23 @@ function KitchenExperience() {
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentStepIndex((i) => Math.max(1, i - 1))}
+                onClick={() => sendVoiceQuery('Previous step')}
                 disabled={currentStepIndex <= 1}
-                className="px-3 py-2 rounded-xl text-xs font-semibold bg-neutral-800 text-neutral-300 hover:bg-neutral-700 disabled:opacity-40 transition-colors"
+                className="px-3 py-2 rounded-xl text-xs font-semibold bg-neutral-800 text-neutral-300 hover:bg-neutral-700 disabled:opacity-40 transition-colors cursor-pointer"
               >
                 Previous Step
               </button>
               <button
-                onClick={() => {
-                  // Speak step repeat visually
-                  const s = currentStepIndex;
-                  setCurrentStepIndex(0);
-                  setTimeout(() => setCurrentStepIndex(s), 50);
-                }}
-                className="px-3 py-2 rounded-xl text-xs font-semibold bg-neutral-800 text-neutral-300 hover:bg-neutral-700 flex items-center gap-1.5 transition-colors"
+                onClick={() => sendVoiceQuery('Repeat that step')}
+                className="px-3 py-2 rounded-xl text-xs font-semibold bg-neutral-800 text-neutral-300 hover:bg-neutral-700 flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Repeat Step
               </button>
               <button
-                onClick={() => setCurrentStepIndex((i) => Math.min(steps.length, i + 1))}
+                onClick={() => sendVoiceQuery('What is the next step?')}
                 disabled={currentStepIndex >= steps.length}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-orange-500 text-neutral-950 hover:brightness-110 disabled:opacity-40 flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-orange-500 text-neutral-950 hover:brightness-110 disabled:opacity-40 flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 <span>Next Step</span>
                 <ChevronRight className="w-4 h-4" />
@@ -519,7 +693,7 @@ function KitchenExperience() {
         </div>
       )}
 
-      {/* Live Latency Visibility HUD for Hackathon Judges (B3) */}
+      {/* Live Latency Visibility HUD */}
       <div className="p-4 sm:p-5 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

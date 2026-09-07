@@ -197,15 +197,20 @@ if RECIPES_FILE.exists():
 else:
     RECIPES_DATA = {}
 
-COOKING_CO_PILOT_PROMPT = """You are CookTalk, a voice cooking assistant. Speak 1-2 brief sentences (under 25 words).
-Rules:
-1. Grounding: Answer recipe questions strictly using your tools and recipes.json.
-2. Steps: Call `next_step` for next step, `repeat_step` to repeat, `previous_step` for previous step, `get_current_step` for current step.
-3. Recipes: Call `set_active_recipe` with 'scrambled_eggs', 'cacio_e_pepe', or 'ribeye_steak', or `get_recipe_ingredients`.
-4. Ingredients & Substitutions: Call `get_ingredient_quantity` or `suggest_substitution`.
-5. Timers: Call `start_cooking_timer` for countdown timers.
-6. Out of scope: Decline non-cooking questions politely in one sentence.
-7. Repeat: When repeat_step is called, recite the instruction verbatim without paraphrasing.
+COOKING_CO_PILOT_PROMPT = """You are CookTalk, an expert hands-free voice cooking assistant for cooks with busy or messy hands.
+CRITICAL SPEAKING STYLE:
+- Speak 1-2 brief, conversational sentences (strictly under 20-25 words). Never monologue.
+- Multi-item lists: When sharing ingredients, name ONLY the 2-3 most essential items conversationally and offer to continue (e.g., "For Cacio e Pepe, you'll need spaghetti, pecorino, and black pepper, plus a couple pantry items. Want the rest?"). Never recite a full 5-ingredient list in one turn.
+- Direct & punchy: Be helpful, warm, and concise.
+
+Rules & Capabilities:
+1. Catalog Recipes: If the user asks about or switches to a dish in your catalog (scrambled eggs, cacio e pepe, ribeye steak, cookies, tikka masala, pancakes, salmon, tacos), call `set_active_recipe` or step tools so the interactive UI tracks along.
+2. ANY Culinary Dish or Question: You know thousands of recipes, techniques, cooking temps, and baking ratios! If the user asks how to cook ANY dish or asks any cooking question (even outside the catalog), answer directly and expertly in 1-2 punchy sentences.
+3. Steps: Call `next_step` for next step, `repeat_step` to repeat, `previous_step` for previous step, `get_current_step` for current step.
+4. Ingredients & Substitutions: Call `get_ingredient_quantity` or `suggest_substitution`. If not in the active recipe, answer using your culinary knowledge.
+5. Timers: Call `start_cooking_timer` whenever the user asks for a timer.
+6. Repeat: When repeat_step is called, recite the instruction verbatim without paraphrasing.
+7. Out of scope: Only decline non-cooking topics (e.g. coding, politics) politely in one sentence.
 """
 
 SYSTEM_PROMPT = COOKING_CO_PILOT_PROMPT
@@ -325,11 +330,23 @@ class CookingCoPilot:
 
         @llm.function_tool
         @track_tool
-        async def set_active_recipe(recipe_id: str) -> str:
-            """Switch active recipe: scrambled_eggs, cacio_e_pepe, ribeye_steak."""
-            clean_id = recipe_id.strip().lower().replace(" ", "_").replace("-", "_")
-            if clean_id in copilot.recipes:
-                copilot.active_recipe_id = clean_id
+        async def set_active_recipe(recipe_name_or_id: str) -> str:
+            """Select or switch the active recipe (e.g. 'chocolate chip cookies', 'cacio e pepe', 'ribeye steak', 'pancakes', 'scrambled eggs', 'tikka masala', 'salmon', 'tacos')."""
+            target = recipe_name_or_id.strip().lower()
+            matched_id = None
+            for k, r in copilot.recipes.items():
+                if k in target or target in k or r["name"].lower() in target or target in r["name"].lower():
+                    matched_id = k
+                    break
+                for word in target.replace("-", " ").replace("_", " ").split():
+                    if len(word) > 3 and (word in k or word in r["name"].lower()):
+                        matched_id = k
+                        break
+                if matched_id:
+                    break
+
+            if matched_id:
+                copilot.active_recipe_id = matched_id
                 copilot.current_step_index = 1
                 recipe = copilot.active_recipe
                 steps = recipe.get("steps", [])
@@ -342,7 +359,7 @@ class CookingCoPilot:
                     "instruction": steps[0]["instruction"] if steps else "",
                 })
                 return f"Switched to {recipe['name']}. We are at Step 1: {recipe['steps'][0]['instruction']}"
-            return f"Recipe '{recipe_id}' is not in the book. Available recipes are: scrambled eggs, cacio e pepe, and ribeye steak."
+            return f"'{recipe_name_or_id}' is not in the preset card catalog, but you can guide the chef directly using your culinary knowledge!"
 
         @llm.function_tool
         @track_tool
@@ -431,7 +448,7 @@ class CookingCoPilot:
         @llm.function_tool
         @track_tool
         async def get_ingredient_quantity(ingredient_name: str) -> str:
-            """Get quantity of an ingredient in active recipe."""
+            """Get quantity of an ingredient in active recipe or advise general proportions."""
             recipe = copilot.active_recipe
             target = ingredient_name.strip().lower()
             for ing in recipe.get("ingredients", []):
@@ -441,12 +458,12 @@ class CookingCoPilot:
                 for ing in r.get("ingredients", []):
                     if target in ing["name"].lower() or ing["name"].lower() in target:
                         return f"{ing['quantity']} {ing['unit']} in {r['name']}"
-            return f"{ingredient_name.title()} is not listed in {recipe['name']}."
+            return f"{ingredient_name.title()} is not in the active recipe card. Use your culinary knowledge to advise the chef."
 
         @llm.function_tool
         @track_tool
         async def suggest_substitution(ingredient_name: str) -> str:
-            """Suggest substitution for an ingredient in active recipe."""
+            """Suggest substitution for an ingredient in active recipe or any general culinary ingredient."""
             recipe = copilot.active_recipe
             target = ingredient_name.strip().lower()
             substitutions = recipe.get("substitutions", {})
@@ -457,7 +474,7 @@ class CookingCoPilot:
                 for ing_key, sub_val in r.get("substitutions", {}).items():
                     if target in ing_key.lower() or ing_key.lower() in target:
                         return f"From {r['name']}: For {ing_key}, you can use {sub_val}"
-            return f"No verified culinary substitution is listed for {ingredient_name} in {recipe['name']}."
+            return f"No preset substitution in the card for {ingredient_name}. Recommend a chef-approved swap from your culinary knowledge."
 
         @llm.function_tool
         @track_tool
@@ -504,18 +521,36 @@ class CookingCoPilot:
 
         @llm.function_tool
         @track_tool
-        async def get_recipe_ingredients(recipe_id: str | None = None) -> str:
-            """Get full list of ingredients for a recipe (cacio_e_pepe, scrambled_eggs, ribeye_steak)."""
-            target_id = recipe_id.strip().lower().replace(" ", "_") if recipe_id else copilot.active_recipe_id
-            if target_id in copilot.recipes:
-                copilot.active_recipe_id = target_id
+        async def get_recipe_ingredients(recipe_name_or_id: str | None = None) -> str:
+            """Get ingredients for a specific dish or recipe (e.g. 'chocolate chip cookies', 'cacio e pepe', 'pancakes', 'ribeye steak', 'salmon', 'tacos', 'scrambled eggs'). Pass the name of the dish if mentioned."""
+            target = recipe_name_or_id.strip().lower() if recipe_name_or_id else ""
+            matched_id = None
+            if target:
+                for k, r in copilot.recipes.items():
+                    if k in target or target in k or r["name"].lower() in target or target in r["name"].lower():
+                        matched_id = k
+                        break
+                    for word in target.replace("-", " ").replace("_", " ").split():
+                        if len(word) > 3 and (word in k or word in r["name"].lower()):
+                            matched_id = k
+                            break
+                    if matched_id:
+                        break
+            else:
+                matched_id = copilot.active_recipe_id
+
+            if matched_id and matched_id in copilot.recipes:
+                copilot.active_recipe_id = matched_id
                 copilot.current_step_index = 1
-            recipe = copilot.recipes.get(target_id, copilot.active_recipe)
-            ings = recipe.get("ingredients", [])
-            if not ings:
-                return f"No ingredients found for {recipe.get('name', 'this recipe')}."
-            ing_list = ", ".join(f"{i['quantity']} {i['unit']} {i['name']}" for i in ings)
-            return f"For {recipe['name']}, you will need: {ing_list}."
+                recipe = copilot.recipes[matched_id]
+                ings = recipe.get("ingredients", [])
+                main_ings = ", ".join(f"{i['quantity']} {i['unit']} {i['name']}" for i in ings[:3])
+                remainder = len(ings) - 3
+                if remainder > 0:
+                    return f"Key ingredients for {recipe['name']}: {main_ings}, plus {remainder} other items. Offer to share the full list."
+                return f"Ingredients for {recipe['name']}: {main_ings}."
+
+            return f"Dish '{recipe_name_or_id}' is not in the preset card catalog. List the 2-3 most essential ingredients conversationally from your culinary knowledge."
 
         return [
             set_active_recipe,
@@ -1066,9 +1101,67 @@ async def entrypoint(ctx: JobContext):
         elif isinstance(m, TTSMetrics):
             metrics_manager.record_tts(m)
 
+    @ctx.room.on("data_received")
+    def on_data_received(data_packet: rtc.DataPacket):
+        try:
+            payload = json.loads(data_packet.data.decode("utf-8"))
+            msg_type = payload.get("type")
+            if msg_type == "select_recipe":
+                recipe_id = payload.get("recipe_id")
+                if recipe_id in copilot.recipes:
+                    copilot.active_recipe_id = recipe_id
+                    copilot.current_step_index = 1
+                    recipe = copilot.active_recipe
+                    steps = recipe.get("steps", [])
+                    logger.info(f"[CLIENT UI SYNC] Recipe switched to {recipe_id}")
+                    asyncio.create_task(copilot.broadcast({
+                        "type": "recipe_state",
+                        "recipe_id": copilot.active_recipe_id,
+                        "recipe_name": recipe["name"],
+                        "current_step": 1,
+                        "total_steps": len(steps),
+                        "instruction": steps[0]["instruction"] if steps else "",
+                    }))
+            elif msg_type == "user_text":
+                text = payload.get("text", "").strip()
+                if text:
+                    logger.info(f"[CLIENT TEXT PROMPT] User requested: '{text}'")
+                    session.generate_reply(user_input=text)
+        except Exception as e:
+            logger.debug(f"[DATA PACKET NOTICE] {e}")
+
     agent = CookTalkAgent(tools=tools)
     await session.start(room=ctx.room, agent=agent)
     logger.info("CookTalk AgentSession started and ready for speech.")
+
+    is_benchmark_room = any(ctx.room.name.startswith(p) for p in ("bench-", "diag-", "perf-", "regression-", "smoke-"))
+    if not is_benchmark_room:
+        async def _greet_chef():
+            try:
+                if not ctx.room.remote_participants:
+                    logger.info("[AGENT GREETING] Waiting for chef to join room...")
+                    await ctx.wait_for_participant()
+                await asyncio.sleep(1.0)
+                logger.info("[AGENT GREETING] Speaking initial greeting to chef...")
+                session.say(
+                    "Hey Chef! I'm CookTalk, your hands-free cooking co-pilot. What are we cooking today?",
+                    allow_interruptions=True,
+                    add_to_chat_ctx=True,
+                )
+                recipe = copilot.active_recipe
+                steps = recipe.get("steps", [])
+                await copilot.broadcast({
+                    "type": "recipe_state",
+                    "recipe_id": copilot.active_recipe_id,
+                    "recipe_name": recipe.get("name", "Scrambled Eggs"),
+                    "current_step": 1,
+                    "total_steps": len(steps),
+                    "instruction": steps[0]["instruction"] if steps else "",
+                })
+            except Exception as e:
+                logger.warning(f"[AGENT GREETING] Greeting notice: {e}")
+
+        asyncio.create_task(_greet_chef())
 
 
 if __name__ == "__main__":

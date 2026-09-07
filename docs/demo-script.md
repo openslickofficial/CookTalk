@@ -38,16 +38,16 @@
 - **Visual**: Click **"Start Cooking Session"**. The browser requests microphone permission and connects instantly over WebRTC to LiveKit Cloud. Select the recipe **"Classic Roman Cacio e Pepe"**. The step card updates visually to Step 1.
 - **Action / Spoken Interaction**:
   - **User**: *"CookTalk, what ingredients do I need for Cacio e Pepe?"*
-  - **CookTalk (Immediate Acknowledgment via Rime `astra`)**: *"One sec, checking that recipe."* *(Spoken in 823 ms after EOU)*
-  - **CookTalk (Substantive Answer)**: *"You'll need 400 grams of spaghetti or tonnarelli, 200 grams of finely grated Pecorino Romano, and 2 tablespoons of whole black peppercorns."*
+  - **CookTalk (Immediate Acknowledgment via Rime `astra`)**: *"Checking the ingredients list for you."* *(Spoken in ~875 ms after EOU)*
+  - **CookTalk (Substantive Answer)**: *"For Cacio e Pepe, you'll need spaghetti, pecorino, and black pepper, plus a couple pantry items. Want the rest?"*
   - **User**: *"What if I don't have Pecorino Romano?"*
-  - **CookTalk (Immediate Acknowledgment)**: *"Let me check good substitutions for that."*
-  - **CookTalk (Substantive Answer)**: *"You can substitute with aged Parmigiano-Reggiano or Grana Padano, though Pecorino provides the traditional sharp, salty kick."*
+  - **CookTalk (Immediate Acknowledgment)**: *"Looking up what you can swap in."*
+  - **CookTalk (Substantive Answer)**: *"You can use a 50/50 mix of Parmigiano-Reggiano and Grana Padano for a similar salty, nutty kick."*
   - **User**: *"Got it. What's the next step?"*
-  - **CookTalk (Immediate Acknowledgment)**: *"Moving to the next step."*
-  - **CookTalk (Substantive Answer)**: *"Step 2: Bring a large pot of water to a boil. Salt it lightly—less than usual, as Pecorino is naturally salty. Drop the spaghetti."*
+  - **CookTalk (Immediate Acknowledgment)**: *"Getting the next step."*
+  - **CookTalk (Substantive Answer)**: *"Toast cracked black pepper in a wide dry skillet over medium heat for one minute until fragrant."*
 - **Presenter (Voiceover)**:
-  > *"Notice how natural that feels. First, every response begins with an immediate spoken acknowledgment — the cook is never left wondering if the assistant heard them. Second, every answer is grounded in structured culinary data (`recipes.json`) — zero hallucinated cooking facts. Third, speech output streams directly into WebRTC via Rime's `/ws3` WebSocket endpoint without waiting for the full sentence to finish generating."*
+  > *"Notice how natural that feels. First, every tool response begins with an immediate spoken acknowledgment — the cook is never left in silence wondering if the assistant heard them. Second, answers are punchy and conversational (under 20-25 words), offering to expand rather than reading long monologues to someone with dirty hands. Third, speech output streams directly into WebRTC via Rime's `/ws3` WebSocket endpoint without waiting for the full sentence to finish generating."*
 
 ---
 
@@ -55,20 +55,20 @@
 - **Visual**: Focus on the **Latency HUD** on the right side of the screen. Show the live breakdown:
   - VAD / Turn Endpointing: `~600 ms`
   - STT Delay: `~250 ms` (Deepgram `nova-3`)
-  - LLM TTFT: `~400 ms` (Groq `qwen/qwen3.8-27b`)
-  - TTS TTFB: `~388 ms` (Rime `coda`/`astra` via `/ws3`)
-  - Tool Acknowledgment Latency: `823.7 ms` (first audio sound)
+  - LLM TTFT: `~650 – 800 ms` (Groq `qwen/qwen3.8-27b`)
+  - TTS TTFB: `~386 ms` (Rime `coda`/`astra` via `/ws3`)
+  - Server Ack Latency: `~875 ms` (EOU to ack dispatch)
   - Display the comparison chart from `RIME_EVIDENCE.md`.
 - **Presenter (Voiceover)**:
   > *"How did we achieve this? In our Phase 1 HTTP baseline, generating audio required 3,578 ms for TTS alone, pushing client-perceived latency to 6.3 seconds.*
   > 
-  > *In CookTalk, we stream directly to Rime’s `/ws3` binary WebSocket endpoint inside a LiveKit agent worker. Rime returns the first audio chunk in just 388 milliseconds — a **9.2x component speedup**.*
+  > *In CookTalk, we stream directly to Rime’s `/ws3` binary WebSocket endpoint inside a LiveKit agent worker. Rime returns the first audio chunk in just 386 milliseconds — a **9.27x component speedup**.*
   > 
   > *Crucially, we tackled two real-world hurdles that naive benchmarks ignore:*
   > 
-  > *First, idle kitchen pauses: when a cook steps away for 20 to 30 seconds, remote WebSockets tear down, causing a 1.1-second cold-start delay. Our `WarmRimeTTS` pool manager actively prewarms idle connections, keeping TTFB flat at ~390ms across all gaps up to 60 seconds — a 75% speedup.*
+  > *First, idle kitchen pauses: when a cook steps away for 20 to 30 seconds, remote WebSockets tear down, causing a 1.1-second cold-start delay. Our `WarmRimeTTS` pool manager actively prewarms idle connections, keeping TTFB flat at ~386ms across all gaps up to 60 seconds — a 73–75% speedup.*
   > 
-  > *Second, tool calls: checking ingredients or steps requires two LLM passes, which would normally create a 5.5-second silence. CookTalk fires an immediate spoken acknowledgment the instant a tool dispatches, bringing first audio to the cook in ~1.8 seconds. Rime's sub-400ms TTFB masks the entire tool execution bottleneck."*
+  > *Second, tool calls: checking ingredients or steps requires two LLM passes, which would normally create an awkward silence. CookTalk fires an immediate spoken acknowledgment the instant a tool dispatches in ~875ms after EOU, keeping the cook actively engaged while Rime's sub-400ms streaming TTS prepares the substantive answer."*
 
 ---
 
@@ -115,9 +115,9 @@
 ### Beat 7: Summary & Verification (`4:10 – 4:30`)
 - **Visual**: Display the headline comparison table from `README.md` and show the command line reproduction suite.
 - **Presenter (Voiceover)**:
-  > *"To summarize: CookTalk replaces a 6.3-second HTTP baseline with an ultra-responsive WebRTC streaming architecture powered by Rime `coda`/`astra`.*
+  > *"To summarize: CookTalk is ~8% faster end-to-end (5.8 seconds vs. our 6.3-second baseline) across realistic, tool-assisted cooking turns.
   > 
-  > *With 9.2x faster TTS time-to-first-byte, active connection warming, grounded culinary tools, and proactive voice alerts, CookTalk makes hands-free cooking fast, reliable, and delightful.*
+  > *Behind that is a 9.27x component speedup in TTS time-to-first-byte using Rime WebSocket `/ws3`, which eliminated speech synthesis as the bottleneck — while active connection warming and immediate spoken acknowledgments keep hands-free cooking responsive, grounded, and reliable.*
   > 
   > *Every single benchmark in this repository was measured live against real production endpoints and can be reproduced with a single command. Thank you!"*
 

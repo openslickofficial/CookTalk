@@ -330,12 +330,15 @@ class DemoBenchHarness:
         tool_exec_ms = latest_metrics.get("tool_execution_ms")
         tool_rt_ms = latest_metrics.get("tool_roundtrip_ms")
         ack_phrase = latest_metrics.get("acknowledgment_phrase")
+        ack_latency = latest_metrics.get("acknowledgment_latency_ms")
+        eou_delay = latest_metrics.get("eou_delay_ms")
         llm_ttft = latest_metrics.get("llm_ttft_ms")
         tts_ttfb = latest_metrics.get("tts_ttfb_ms")
         agent_resp = latest_metrics.get("agent_response", "")
+        speaking_ms = round((t_end - t1_first_audio) * 1000.0, 1) if (t_end and t1_first_audio) else None
         status = "success" if (first_audio_ms is not None and first_audio_ms > 400) else latest_metrics.get("status", "incomplete")
 
-        print(f"  [METRICS] Tool: {tool_called} | Ack: \"{ack_phrase}\" | LLM TTFT: {llm_ttft} ms | TTS TTFB: {tts_ttfb} ms")
+        print(f"  [METRICS] Tool: {tool_called} | Ack: \"{ack_phrase}\" ({ack_latency} ms) | LLM TTFT: {llm_ttft} ms | TTS TTFB: {tts_ttfb} ms | Speaking: {speaking_ms} ms")
         print(f"  [REPLY] \"{agent_resp[:60]}...\"")
 
         record = {
@@ -346,10 +349,13 @@ class DemoBenchHarness:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "time_to_first_audio_ms": round(first_audio_ms, 1),
             "time_to_substantive_answer_ms": round(substantive_ms, 1),
+            "agent_speaking_duration_ms": speaking_ms,
             "total_turn_duration_ms": round(total_turn_ms, 1),
             "audible_peak1": heard_peak1,
             "audible_peak2": heard_peak2,
             "acknowledgment_phrase": ack_phrase,
+            "acknowledgment_latency_ms": ack_latency,
+            "eou_delay_ms": eou_delay,
             "tool_called": tool_called,
             "tool_execution_ms": tool_exec_ms,
             "tool_roundtrip_ms": tool_rt_ms,
@@ -520,34 +526,57 @@ async def main():
                 with open(RESULTS_FILE, "a", encoding="utf-8") as f:
                     f.write(json.dumps(rec) + "\n")
 
+                if "having trouble connecting" in str(rec.get("agent_response", "")).lower():
+                    print("\n[QUOTA EXHAUSTION DETECTED] Stopping benchmark cleanly to avoid fallback contamination.")
+                    break
+            else:
+                continue
+            break
+
     finally:
         await harness.disconnect()
 
     # Print Statistically Rigorous Per-Query Breakdown Table
     print("\n" + "=" * 85)
-    print("PHASE 6.7 STATISTICALLY RIGOROUS DEMO-QUERY BENCHMARK BREAKDOWN (n=5 per query, 25 trials)")
+    print("PHASE 6.9 FINAL DEMO-QUERY BENCHMARK BREAKDOWN (n=5 per query, up to 25 trials)")
     print("=" * 85)
     header = f"{'Query Name':<28} | {'Metric':<18} | {'Median':<10} | {'Mean':<10} | {'P95':<10}"
     print(header)
     print("-" * 85)
 
+    clean_records = [r for r in all_records if r.get("status") == "success" and "having trouble connecting" not in str(r.get("agent_response", "")).lower()]
+
     for q_cfg in DEMO_QUERIES:
         q_id = q_cfg["id"]
         q_name = q_cfg["name"]
-        q_records = [r for r in all_records if r["query_id"] == q_id and r["status"] == "success"]
+        q_records = [r for r in clean_records if r["query_id"] == q_id]
         n = len(q_records)
         if n == 0:
             continue
 
-        t_first = [r["time_to_first_audio_ms"] for r in q_records]
-        t_sub = [r["time_to_substantive_answer_ms"] for r in q_records]
-        t_tot = [r["total_turn_duration_ms"] for r in q_records]
+        t_first = [r["time_to_first_audio_ms"] for r in q_records if r.get("time_to_first_audio_ms") is not None]
+        t_sub = [r["time_to_substantive_answer_ms"] for r in q_records if r.get("time_to_substantive_answer_ms") is not None]
+        t_tot = [r["total_turn_duration_ms"] for r in q_records if r.get("total_turn_duration_ms") is not None]
 
         print(f"{q_name:<28} | First-Audio (Ack)  | {np.median(t_first):<10.1f} | {np.mean(t_first):<10.1f} | {np.percentile(t_first, 95):<10.1f}")
         print(f"{'':<28} | Substantive Answer | {np.median(t_sub):<10.1f} | {np.mean(t_sub):<10.1f} | {np.percentile(t_sub, 95):<10.1f}")
         print(f"{'':<28} | Total Turn Time    | {np.median(t_tot):<10.1f} | {np.mean(t_tot):<10.1f} | {np.percentile(t_tot, 95):<10.1f}")
         print("-" * 85)
 
+    if clean_records:
+        all_first = [r["time_to_first_audio_ms"] for r in clean_records if r.get("time_to_first_audio_ms") is not None]
+        all_sub = [r["time_to_substantive_answer_ms"] for r in clean_records if r.get("time_to_substantive_answer_ms") is not None]
+        all_tot = [r["total_turn_duration_ms"] for r in clean_records if r.get("total_turn_duration_ms") is not None]
+        all_spk = [r["agent_speaking_duration_ms"] for r in clean_records if r.get("agent_speaking_duration_ms") is not None]
+        all_ack = [r["acknowledgment_latency_ms"] for r in clean_records if r.get("acknowledgment_latency_ms") is not None]
+
+        print(f"{'OVERALL (CLEAN TRIALS, N=' + str(len(clean_records)) + ')':<28} | First-Audio (Ack)  | {np.median(all_first):<10.1f} | {np.mean(all_first):<10.1f} | {np.percentile(all_first, 95):<10.1f}")
+        print(f"{'':<28} | Substantive Answer | {np.median(all_sub):<10.1f} | {np.mean(all_sub):<10.1f} | {np.percentile(all_sub, 95):<10.1f}")
+        print(f"{'':<28} | Total Turn Time    | {np.median(all_tot):<10.1f} | {np.mean(all_tot):<10.1f} | {np.percentile(all_tot, 95):<10.1f}")
+        if all_spk:
+            print(f"{'':<28} | Agent Speaking Dur | {np.median(all_spk):<10.1f} | {np.mean(all_spk):<10.1f} | {np.percentile(all_spk, 95):<10.1f}")
+        if all_ack:
+            print(f"{'':<28} | Server Ack Latency | {np.median(all_ack):<10.1f} | {np.mean(all_ack):<10.1f} | {np.percentile(all_ack, 95):<10.1f}")
     print("=" * 85)
 
 
