@@ -557,7 +557,7 @@ def sanitize_chat_context(chat_ctx: llm.ChatContext) -> llm.ChatContext:
     # Qwen chat template requires at least one user query if assistant/tool turns exist
     if not has_user and new_items:
         # Prepend a fallback user message to satisfy Qwen Jinja template requirements
-        new_items.insert(0, llm.ChatMessage(role="user", content="Continue."))
+        new_items.insert(0, llm.ChatMessage(role="user", content=["Continue."]))
 
     return llm.ChatContext(items=new_items)
 
@@ -737,8 +737,8 @@ class TurnMetricsManager:
             self.turns[sid] = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "speech_id": sid,
-                "text": self.last_user_transcript or "Voice question",
-                "agent_response": self.last_assistant_response or "",
+                "text": "",
+                "agent_response": "",
                 "eou_delay_ms": None,
                 "llm_ttft_ms": None,
                 "tts_ttfb_ms": None,
@@ -812,6 +812,11 @@ class TurnMetricsManager:
         sid = self.latest_speech_id or "turn_default"
         if sid in self.turns:
             self.turns[sid]["agent_response"] = clean_text
+            if hasattr(self, "on_turn_completed") and self.on_turn_completed:
+                try:
+                    self.on_turn_completed(self.turns[sid])
+                except Exception as e:
+                    logger.debug(f"[METRICS CALLBACK] Error in turn callback: {e}")
 
         # Retroactively update latest line in results_file if agent_response was empty
         try:
