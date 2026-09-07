@@ -226,8 +226,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     }
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF143826), // CookTalk signature deep green
-                    foregroundColor: Colors.white,
+                    backgroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                    foregroundColor: isDark ? const Color(0xFF143826) : Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
@@ -305,7 +305,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             end: Alignment.bottomRight,
             colors: [
               const Color(0xFF143826).withValues(alpha: 0.1),
-              const Color(0xFFD2E68B).withValues(alpha: 0.25),
+              const Color(0xFFD2E68B).withValues(alpha: 0.2),
             ],
           ),
           border: Border.all(
@@ -336,7 +336,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF7A00),
+                    color: const Color(0xFFD2E68B),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -345,7 +345,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.timer, color: Colors.white, size: 18),
+                  child: const Icon(Icons.timer, color: Color(0xFF143826), size: 18),
                 ),
               ),
             ],
@@ -418,20 +418,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFD2E68B).withValues(alpha: 0.35),
+                color: (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826)).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826)).withValues(alpha: 0.35),
+                  width: 1,
+                ),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.mic, size: 16, color: Color(0xFF143826)),
-                  SizedBox(width: 6),
+                  Icon(
+                    Icons.mic,
+                    size: 16,
+                    color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                  ),
+                  const SizedBox(width: 6),
                   Text(
                     'Say "Let\'s start cooking"',
                     style: TextStyle(
                       fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF143826),
+                      fontWeight: FontWeight.w800,
+                      color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
                     ),
                   ),
                 ],

@@ -149,7 +149,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? const Color(0xFFFF7A00)
+                                ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
                                 : (isDark ? const Color(0xFF222836) : const Color(0xFFF1F5F9)),
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -159,7 +159,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                               color: isSelected
-                                  ? Colors.white
+                                  ? (isDark ? const Color(0xFF143826) : Colors.white)
                                   : (isDark ? Colors.white70 : const Color(0xFF4A5568)),
                             ),
                           ),
@@ -184,8 +184,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF7A00),
-                        foregroundColor: Colors.white,
+                        backgroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                        foregroundColor: isDark ? const Color(0xFF143826) : Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         elevation: 0,
                       ),
@@ -302,7 +302,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: isSelected
-                                  ? const Color(0xFFD2E68B)
+                                  ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
                                   : (isDark ? const Color(0xFF2E384D) : const Color(0xFFE2E8F0)),
                               width: isSelected ? 1.5 : 1,
                             ),
@@ -345,8 +345,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         setState(() {});
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF7A00),
-                        foregroundColor: Colors.white,
+                        backgroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                        foregroundColor: isDark ? const Color(0xFF143826) : Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         elevation: 0,
                       ),
@@ -415,12 +415,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? const Color(0xFFFF7A00).withValues(alpha: 0.12)
+                        ? (isDark
+                            ? const Color(0xFFD2E68B).withValues(alpha: 0.15)
+                            : const Color(0xFF143826).withValues(alpha: 0.08))
                         : (isDark ? const Color(0xFF222836) : const Color(0xFFF8FAFC)),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: isSelected
-                          ? const Color(0xFFFF7A00)
+                          ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
                           : (isDark ? const Color(0xFF2E384D) : const Color(0xFFE2E8F0)),
                     ),
                   ),
@@ -428,7 +430,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
                     leading: Icon(
                       Icons.record_voice_over_rounded,
-                      color: isSelected ? const Color(0xFFFF7A00) : (isDark ? Colors.white60 : const Color(0xFF64748B)),
+                      color: isSelected
+                          ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
+                          : (isDark ? Colors.white60 : const Color(0xFF64748B)),
                     ),
                     title: Text(
                       opt['name']!,
@@ -446,7 +450,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     trailing: isSelected
-                        ? const Icon(Icons.check_circle_rounded, color: Color(0xFFFF7A00), size: 20)
+                        ? Icon(
+                            Icons.check_circle_rounded,
+                            color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                            size: 20,
+                          )
                         : null,
                     onTap: () async {
                       await SupabaseService.instance.setRimeVoiceStyle(opt['id']!);
@@ -588,7 +596,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF7A00),
+                backgroundColor: const Color(0xFFEF4444),
                 foregroundColor: Colors.white,
               ),
               child: const Text('Sign Out'),
@@ -667,7 +675,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           height: 68,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFFFF7A00), width: 2),
+                            border: Border.all(
+                              color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                              width: 2,
+                            ),
                             image: DecorationImage(
                               image: NetworkImage(profile.avatarUrl),
                               fit: BoxFit.cover,
@@ -715,20 +726,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFF7A00).withValues(alpha: 0.15),
+                              color: (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
+                                  .withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.restaurant_rounded, size: 12, color: Color(0xFFFF7A00)),
+                                Icon(
+                                  Icons.restaurant_rounded,
+                                  size: 12,
+                                  color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   profile.cookingFrequency,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFFFF7A00),
+                                    color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
                                   ),
                                 ),
                               ],
@@ -848,10 +864,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF7A00).withValues(alpha: 0.15),
+                    color: (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
+                        .withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.scale_rounded, color: Color(0xFFFF7A00), size: 20),
+                  child: Icon(
+                    Icons.scale_rounded,
+                    color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                    size: 20,
+                  ),
                 ),
                 title: Text(
                   'Measurement System',
@@ -869,7 +890,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 value: isMetric,
-                activeTrackColor: const Color(0xFFFF7A00),
+                activeTrackColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                activeColor: isDark ? const Color(0xFF143826) : Colors.white,
                 onChanged: (val) async {
                   await SupabaseService.instance.setIsMetric(val);
                   setState(() {});
@@ -927,7 +949,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     value: isOledDark,
-                    activeTrackColor: const Color(0xFFFF7A00),
+                    activeTrackColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                    activeColor: isDark ? const Color(0xFF143826) : Colors.white,
                     onChanged: (val) {
                       widget.appThemeMode.value = val ? ThemeMode.dark : ThemeMode.light;
                     },
@@ -1058,10 +1081,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF7A00).withValues(alpha: 0.15),
+                    color: (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
+                        .withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.article_outlined, color: Color(0xFFFF7A00), size: 20),
+                  child: Icon(
+                    Icons.article_outlined,
+                    color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                    size: 20,
+                  ),
                 ),
                 title: Text(
                   'Terms of Service',

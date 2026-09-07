@@ -20,22 +20,19 @@ void main() {
 }
 
 // ---------------------------------------------------------------------------
-// THEME & PALETTE DEFINITIONS (Task 1)
-// 3 Consistent Accents:
-// - Primary Accent: Amber/Warm Orange (#FF7A00)
-// - Secondary Accent: Deep Saffron / Golden (#FFB300)
-// - Voice / Active Accent: Emerald Green (#10B981)
-// - Agent Speaking Accent: Sky Blue (#0EA5E9)
-// ---------------------------------------------------------------------------
+// THEME & PALETTE DEFINITIONS
+// Unified 2-Color Brand System:
+// - Brand Structure & Headlines: Deep Forest Green (#143826)
+// - Interactive Accent: Fresh Mint Lime (#D2E68B)
+// --------------------------------------------------------------------------------------------------------------------------
 
 class CookTalkTheme {
-  static const primaryAccent = Color(0xFFFF7A00);
-  static const secondaryAccent = Color(0xFFFFB300);
+  static const primaryAccent = Color(0xFFD2E68B); // Fresh Mint Lime
+  static const forestGreen = Color(0xFF143826);   // Deep Forest Green
+  static const secondaryAccent = Color(0xFF10B981);
   static const listeningAccent = Color(0xFF10B981);
   static const speakingAccent = Color(0xFF0EA5E9);
-  static const timerAccent = Color(0xFFF59E0B);
-  static const forestGreen = Color(0xFF143826);
-  static const mintLime = Color(0xFFD2E68B);
+  static const timerAccent = primaryAccent;
 
   static final ThemeData darkTheme = ThemeData(
     useMaterial3: true,
@@ -46,7 +43,7 @@ class CookTalkTheme {
     scaffoldBackgroundColor: const Color(0xFF0D0F12),
     colorScheme: const ColorScheme.dark(
       primary: primaryAccent,
-      secondary: secondaryAccent,
+      secondary: forestGreen,
       surface: Color(0xFF161920),
       onSurface: Color(0xFFF3F4F6),
       surfaceContainerHighest: Color(0xFF222631),
@@ -80,8 +77,8 @@ class CookTalkTheme {
     ),
     scaffoldBackgroundColor: const Color(0xFFF9FAF7),
     colorScheme: const ColorScheme.light(
-      primary: primaryAccent,
-      secondary: secondaryAccent,
+      primary: forestGreen,
+      secondary: primaryAccent,
       surface: Colors.white,
       onSurface: forestGreen,
       surfaceContainerHighest: Color(0xFFECEFE8),

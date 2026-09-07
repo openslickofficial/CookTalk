@@ -148,7 +148,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
     required bool isActive,
   }) {
     if (isActive) {
-      // Active pill indicator matching reference image (Soft Lime Green)
+      // Active pill indicator in Fresh Mint Lime with Forest Green Icon
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => setState(() => _currentTab = index),
@@ -156,13 +156,20 @@ class _MainNavScreenState extends State<MainNavScreen> {
           width: 50,
           height: 50,
           decoration: BoxDecoration(
-            color: const Color(0xFFD2E68B), // Soft lime accent
+            color: const Color(0xFFD2E68B), // Fresh Mint Lime accent
             borderRadius: BorderRadius.circular(25),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFD2E68B).withValues(alpha: 0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child: Center(
             child: Icon(
               activeIcon ?? icon,
-              color: const Color(0xFF143826), // Deep green icon on lime pill
+              color: const Color(0xFF143826), // Deep Forest Green icon
               size: 24,
             ),
           ),

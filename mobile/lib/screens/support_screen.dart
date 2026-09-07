@@ -148,8 +148,8 @@ class _SupportScreenState extends State<SupportScreen> {
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF7A00),
-                    foregroundColor: Colors.white,
+                    backgroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                    foregroundColor: isDark ? const Color(0xFF143826) : Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     elevation: 0,
                   ),
@@ -194,7 +194,7 @@ class _SupportScreenState extends State<SupportScreen> {
     final primaryTextColor = isDark ? Colors.white : const Color(0xFF143826);
     final bodyTextColor = isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569);
     final metaTextColor = isDark ? Colors.white54 : const Color(0xFF94A3B8);
-    final accentGreen = isDark ? const Color(0xFFD2E68B) : const Color(0xFF10B981);
+    final accentLime = isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826);
     final pillBorderColor = isDark ? const Color(0xFF2E384D) : const Color(0xFFCBD5E1);
 
     final faqs = _filteredFaqs;
@@ -307,7 +307,7 @@ class _SupportScreenState extends State<SupportScreen> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(
-                          color: accentGreen.withValues(alpha: 0.7),
+                          color: accentLime.withValues(alpha: 0.7),
                           width: 1.2,
                         ),
                       ),
@@ -316,7 +316,7 @@ class _SupportScreenState extends State<SupportScreen> {
                         children: [
                           Icon(
                             Icons.mail_outline_rounded,
-                            color: accentGreen,
+                            color: accentLime,
                             size: 18,
                           ),
                           const SizedBox(width: 8),
@@ -325,7 +325,7 @@ class _SupportScreenState extends State<SupportScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: accentGreen,
+                              color: accentLime,
                             ),
                           ),
                         ],
@@ -342,7 +342,7 @@ class _SupportScreenState extends State<SupportScreen> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(
-                          color: accentGreen.withValues(alpha: 0.7),
+                          color: accentLime.withValues(alpha: 0.7),
                           width: 1.2,
                         ),
                       ),
@@ -351,7 +351,7 @@ class _SupportScreenState extends State<SupportScreen> {
                         children: [
                           Icon(
                             Icons.chat_bubble_outline_rounded,
-                            color: accentGreen,
+                            color: accentLime,
                             size: 18,
                           ),
                           const SizedBox(width: 8),
@@ -360,7 +360,7 @@ class _SupportScreenState extends State<SupportScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: accentGreen,
+                              color: accentLime,
                             ),
                           ),
                         ],

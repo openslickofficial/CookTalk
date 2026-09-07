@@ -96,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
       'label': 'More',
       'icon': Icons.grid_view_rounded,
       'iconColor': Color(0xFF143826),
-      'isMore': true, // highlighted in lime green
+      'isMore': true, // highlighted in mint lime
     },
   ];
 
@@ -185,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               width: 7,
                               height: 7,
                               decoration: const BoxDecoration(
-                                color: Color(0xFFFF7A00),
+                                color: Color(0xFFD2E68B),
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -300,20 +300,24 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFF7A00).withValues(alpha: 0.14),
+                                color: isDark
+                                    ? const Color(0xFFD2E68B).withValues(alpha: 0.15)
+                                    : const Color(0xFF143826).withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: const Color(0xFFFF7A00).withValues(alpha: 0.3),
+                                  color: isDark
+                                      ? const Color(0xFFD2E68B).withValues(alpha: 0.4)
+                                      : const Color(0xFF143826).withValues(alpha: 0.2),
                                   width: 1,
                                 ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(
+                                  Icon(
                                     Icons.mic_rounded,
                                     size: 13,
-                                    color: Color(0xFFFF7A00),
+                                    color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
                                   ),
                                   const SizedBox(width: 5),
                                   Text(
@@ -322,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontSize: 11,
                                       fontWeight: FontWeight.w800,
                                       letterSpacing: 0.5,
-                                      color: isDark ? const Color(0xFFFF9E40) : const Color(0xFFE65100),
+                                      color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
                                     ),
                                   ),
                                 ],
@@ -381,15 +385,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFFF7A00),
-                                  foregroundColor: Colors.white,
+                                  backgroundColor: isDark
+                                      ? const Color(0xFFD2E68B)
+                                      : const Color(0xFF143826),
+                                  foregroundColor: isDark
+                                      ? const Color(0xFF143826)
+                                      : Colors.white,
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(24),
                                   ),
                                   padding: const EdgeInsets.symmetric(horizontal: 20),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
@@ -398,12 +406,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                         fontSize: 14.5,
                                         fontWeight: FontWeight.w800,
                                         letterSpacing: 0.2,
+                                        color: isDark
+                                            ? const Color(0xFF143826)
+                                            : Colors.white,
                                       ),
                                     ),
-                                    SizedBox(width: 8),
+                                    const SizedBox(width: 8),
                                     Icon(
                                       Icons.mic_rounded,
                                       size: 18,
+                                      color: isDark
+                                          ? const Color(0xFF143826)
+                                          : const Color(0xFFD2E68B),
                                     ),
                                   ],
                                 ),
@@ -437,7 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     final isMore = cat['isMore'] as bool;
                     final isSelected = _selectedCategory == cat['id'];
 
-                    // Lime green accent for "More" button as in design
+                    // Mint Lime accent for "More" button in unified 2-color brand theme
                     final cardBg = isMore
                         ? const Color(0xFFD2E68B)
                         : (isDark ? const Color(0xFF161A24) : Colors.white);
@@ -445,6 +459,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     final textColor = isMore
                         ? const Color(0xFF143826)
                         : (isDark ? Colors.white70 : const Color(0xFF4A5568));
+
+                    final iconColor = isMore
+                        ? const Color(0xFF143826)
+                        : (cat['iconColor'] as Color);
 
                     return GestureDetector(
                       onTap: () {
@@ -458,17 +476,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: cardBg,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: isSelected && !isMore
-                                ? const Color(0xFFFF7A00)
-                                : (isMore
-                                    ? const Color(0xFFBFD86E)
-                                    : (isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8))),
-                            width: isSelected && !isMore ? 1.5 : 1,
+                            color: isSelected || isMore
+                                ? const Color(0xFFD2E68B)
+                                : (isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8)),
+                            width: isSelected || isMore ? 1.5 : 1,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.02),
-                              blurRadius: 6,
+                              color: isMore
+                                  ? const Color(0xFFD2E68B).withValues(alpha: 0.3)
+                                  : Colors.black.withValues(alpha: 0.02),
+                              blurRadius: isMore ? 8 : 6,
                               offset: const Offset(0, 2),
                             ),
                           ],
@@ -479,14 +497,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             Icon(
                               cat['icon'] as IconData,
                               size: 26,
-                              color: cat['iconColor'] as Color,
+                              color: iconColor,
                             ),
                             const SizedBox(height: 8),
                             Text(
                               cat['label'] as String,
                               style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: isMore ? FontWeight.w700 : FontWeight.w600,
+                                fontWeight: isMore ? FontWeight.w800 : FontWeight.w600,
                                 color: textColor,
                               ),
                             ),
@@ -523,7 +541,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: const Color(0xFFFF7A00),
+                            color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
                           ),
                         ),
                       ],
@@ -656,18 +674,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFFFF7A00).withValues(alpha: 0.92),
+                                            color: isDark
+                                                ? const Color(0xFFD2E68B)
+                                                : const Color(0xFF143826).withValues(alpha: 0.92),
                                             borderRadius: BorderRadius.circular(14),
                                           ),
-                                          child: const Row(
+                                          child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              Icon(Icons.mic_rounded, color: Colors.white, size: 12),
-                                              SizedBox(width: 3),
+                                              Icon(
+                                                Icons.mic_rounded,
+                                                color: isDark ? const Color(0xFF143826) : const Color(0xFFD2E68B),
+                                                size: 12,
+                                              ),
+                                              const SizedBox(width: 3),
                                               Text(
                                                 'Cook',
                                                 style: TextStyle(
-                                                  color: Colors.white,
+                                                  color: isDark ? const Color(0xFF143826) : Colors.white,
                                                   fontSize: 10.5,
                                                   fontWeight: FontWeight.w700,
                                                 ),
@@ -816,8 +840,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       widget.onSelectRecipeForCooking?.call(dish);
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF7A00),
-                      foregroundColor: Colors.white,
+                      backgroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                      foregroundColor: isDark ? const Color(0xFF143826) : Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(28),
                       ),

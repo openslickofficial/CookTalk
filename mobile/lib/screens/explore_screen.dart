@@ -98,6 +98,16 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
                             : (isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8)),
                       ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
+                                    .withValues(alpha: isDark ? 0.3 : 0.2),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : null,
                     ),
                     child: Center(
                       child: Text(

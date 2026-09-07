@@ -189,9 +189,9 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                 child: ElevatedButton(
                   onPressed: _isValid ? _goToFrequencyScreen : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF7A00),
+                    backgroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
                     disabledBackgroundColor: isDark ? Colors.white12 : Colors.black12,
-                    foregroundColor: Colors.white,
+                    foregroundColor: isDark ? const Color(0xFF143826) : Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(28),
@@ -321,12 +321,14 @@ class _CookingFrequencyScreenState extends State<CookingFrequencyScreen> {
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? const Color(0xFFFF7A00).withValues(alpha: 0.1)
+                                  ? (isDark
+                                      ? const Color(0xFFD2E68B).withValues(alpha: 0.12)
+                                      : const Color(0xFF143826).withValues(alpha: 0.08))
                                   : (isDark ? const Color(0xFF161A24) : Colors.white),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
                                 color: isSelected
-                                    ? const Color(0xFFFF7A00)
+                                    ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
                                     : (isDark ? const Color(0xFF263042) : const Color(0xFFE2E8F0)),
                                 width: isSelected ? 2 : 1,
                               ),
@@ -340,15 +342,21 @@ class _CookingFrequencyScreenState extends State<CookingFrequencyScreen> {
                                     shape: BoxShape.circle,
                                     border: Border.all(
                                       color: isSelected
-                                          ? const Color(0xFFFF7A00)
+                                          ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
                                           : (isDark ? Colors.white30 : Colors.black26),
                                       width: 2,
                                     ),
-                                    color: isSelected ? const Color(0xFFFF7A00) : Colors.transparent,
+                                    color: isSelected
+                                        ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
+                                        : Colors.transparent,
                                   ),
                                   child: isSelected
-                                      ? const Center(
-                                          child: Icon(Icons.circle, size: 9, color: Colors.white),
+                                      ? Center(
+                                          child: Icon(
+                                            Icons.circle,
+                                            size: 9,
+                                            color: isDark ? const Color(0xFF143826) : Colors.white,
+                                          ),
                                         )
                                       : null,
                                 ),
@@ -396,18 +404,21 @@ class _CookingFrequencyScreenState extends State<CookingFrequencyScreen> {
                 child: ElevatedButton(
                   onPressed: _isSaving ? null : _handleComplete,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF7A00),
-                    foregroundColor: Colors.white,
+                    backgroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                    foregroundColor: isDark ? const Color(0xFF143826) : Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(28),
                     ),
                   ),
                   child: _isSaving
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 22,
                           height: 22,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                          child: CircularProgressIndicator(
+                            color: isDark ? const Color(0xFF143826) : Colors.white,
+                            strokeWidth: 2.5,
+                          ),
                         )
                       : const Text(
                           'Complete & Start Cooking',

@@ -11,7 +11,7 @@ class TermsOfServiceScreen extends StatelessWidget {
     final primaryTextColor = isDark ? Colors.white : const Color(0xFF143826);
     final bodyTextColor = isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569);
     final metaTextColor = isDark ? Colors.white54 : const Color(0xFF94A3B8);
-    final accentGreen = isDark ? const Color(0xFFD2E68B) : const Color(0xFF10B981);
+    final accentLime = isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826);
     final pillBorderColor = isDark ? const Color(0xFF2E384D) : const Color(0xFFCBD5E1);
 
     return Scaffold(
@@ -101,7 +101,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: accentGreen.withValues(alpha: 0.6),
+                    color: accentLime.withValues(alpha: 0.6),
                     width: 1.2,
                   ),
                 ),
@@ -110,7 +110,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.arrow_circle_down_rounded,
-                      color: accentGreen,
+                      color: accentLime,
                       size: 18,
                     ),
                     const SizedBox(width: 8),
@@ -119,7 +119,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: accentGreen,
+                        color: accentLime,
                       ),
                     ),
                   ],
