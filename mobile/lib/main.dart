@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -9,7 +10,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'services/supabase_service.dart';
 import 'models/user_profile.dart';
 import 'screens/onboarding_screen.dart';
-import 'screens/auth_screen.dart';
 import 'screens/preferences_screen.dart';
 import 'screens/main_nav_screen.dart';
 
@@ -158,21 +158,37 @@ class RecipeItem {
   final String name;
   final String description;
   final int totalSteps;
+  final bool verified;
+  final String source;
+  final List<Map<String, dynamic>> steps;
+  final List<Map<String, dynamic>> ingredients;
 
   const RecipeItem({
     required this.id,
     required this.name,
     required this.description,
     required this.totalSteps,
+    this.verified = false,
+    this.source = 'ai_generated',
+    this.steps = const [],
+    this.ingredients = const [],
   });
 
   factory RecipeItem.fromJson(String id, Map<String, dynamic> json) {
-    final steps = json['steps'] as List<dynamic>? ?? [];
+    final rawSteps = json['steps'] as List<dynamic>? ?? [];
+    final stepsList = rawSteps.map((e) => e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{}).toList();
+    final rawIngredients = json['ingredients'] as List<dynamic>? ?? [];
+    final ingredientsList = rawIngredients.map((e) => e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{}).toList();
+    final isBenchmark = {'scrambled_eggs', 'cacio_e_pepe', 'ribeye_steak'}.contains(id);
     return RecipeItem(
       id: id,
       name: json['name'] as String? ?? id,
       description: json['description'] as String? ?? '',
-      totalSteps: steps.length,
+      totalSteps: stepsList.length,
+      verified: (json['verified'] as bool?) ?? isBenchmark,
+      source: (json['source'] as String?) ?? (isBenchmark ? 'curated' : 'ai_generated'),
+      steps: stepsList,
+      ingredients: ingredientsList,
     );
   }
 }
@@ -617,10 +633,11 @@ class InSessionScreen extends StatefulWidget {
   State<InSessionScreen> createState() => _InSessionScreenState();
 }
 
-class _InSessionScreenState extends State<InSessionScreen> {
+class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProviderStateMixin {
   Room? _room;
   EventsListener<RoomEvent>? _listener;
   Timer? _countdownTicker;
+  AnimationController? _waveAnimController;
 
   // Real voice state from LiveKit events
   AgentVoiceState _voiceState = AgentVoiceState.connecting;
@@ -644,7 +661,16 @@ class _InSessionScreenState extends State<InSessionScreen> {
   void initState() {
     super.initState();
     _recipeName = widget.initialRecipe.name;
-    _totalSteps = widget.initialRecipe.totalSteps;
+    _totalSteps = widget.initialRecipe.totalSteps > 0 ? widget.initialRecipe.totalSteps : 5;
+    if (widget.initialRecipe.steps.isNotEmpty) {
+      final first = widget.initialRecipe.steps.first;
+      _currentInstruction = first['instruction'] as String? ?? 'Ready to begin!';
+    }
+    _lastAgentUtterance = 'Hey Chef! I\'ve got your ${widget.initialRecipe.name} ready. Ask "What are the ingredients?" or "Next step".';
+    _waveAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
     _startLiveKitSession();
 
     // 1-second ticker for passive visual timer countdown
@@ -657,6 +683,7 @@ class _InSessionScreenState extends State<InSessionScreen> {
 
   @override
   void dispose() {
+    _waveAnimController?.dispose();
     _countdownTicker?.cancel();
     _cleanupRoom();
     super.dispose();
@@ -722,10 +749,20 @@ class _InSessionScreenState extends State<InSessionScreen> {
       await room.localParticipant?.setMicrophoneEnabled(true);
 
       // 5. Send initial recipe selection packet so agent aligns immediately
+      final isFirstTime = !SupabaseService.instance.hasCookedBefore(widget.initialRecipe.id);
+      await SupabaseService.instance.recordCookHistory(widget.initialRecipe.id);
+
       try {
         final selectPacket = utf8.encode(jsonEncode({
           'type': 'select_recipe',
           'recipe_id': widget.initialRecipe.id,
+          'recipe_name': widget.initialRecipe.name,
+          'description': widget.initialRecipe.description,
+          'total_steps': widget.initialRecipe.totalSteps,
+          'steps': widget.initialRecipe.steps,
+          'ingredients': widget.initialRecipe.ingredients,
+          'verified': widget.initialRecipe.verified,
+          'is_first_time': isFirstTime,
         }));
         await room.localParticipant?.publishData(selectPacket);
       } catch (e) {
@@ -812,6 +849,13 @@ class _InSessionScreenState extends State<InSessionScreen> {
           for (final t in _timers) {
             if (t.label == label) t.isCompleted = true;
           }
+        } else if (type == 'timer_cancelled') {
+          final label = (data['label'] as String?)?.toLowerCase();
+          if (label != null && label.isNotEmpty) {
+            _timers.removeWhere((t) => t.label.toLowerCase() == label || t.label.toLowerCase().contains(label));
+          } else {
+            _timers.clear();
+          }
         } else if (type == 'turn_metrics') {
           if (data['agent_response'] != null) {
             _lastAgentUtterance = data['agent_response'];
@@ -829,32 +873,14 @@ class _InSessionScreenState extends State<InSessionScreen> {
     }
   }
 
-  void _cycleTheme() {
-    final current = appThemeMode.value;
-    if (current == ThemeMode.system) {
-      appThemeMode.value = ThemeMode.dark;
-    } else if (current == ThemeMode.dark) {
-      appThemeMode.value = ThemeMode.light;
-    } else {
-      appThemeMode.value = ThemeMode.system;
-    }
-  }
-
-  IconData _getThemeIcon() {
-    final mode = appThemeMode.value;
-    if (mode == ThemeMode.dark) return Icons.dark_mode_rounded;
-    if (mode == ThemeMode.light) return Icons.light_mode_rounded;
-    return Icons.brightness_auto_rounded;
-  }
-
   Color _getVoiceStateColor() {
     switch (_voiceState) {
       case AgentVoiceState.connecting:
-        return CookTalkTheme.secondaryAccent;
+        return CookTalkTheme.primaryAccent;
       case AgentVoiceState.listening:
-        return CookTalkTheme.listeningAccent;
+        return CookTalkTheme.listeningAccent; // Emerald Green #10B981
       case AgentVoiceState.speaking:
-        return CookTalkTheme.speakingAccent;
+        return CookTalkTheme.speakingAccent;  // Sky Blue #0EA5E9
       case AgentVoiceState.error:
         return Colors.redAccent;
     }
@@ -873,6 +899,161 @@ class _InSessionScreenState extends State<InSessionScreen> {
     }
   }
 
+  Widget _buildDynamicWaveform(Color stateColor, bool isDark) {
+    return AnimatedBuilder(
+      animation: _waveAnimController!,
+      builder: (context, child) {
+        final animValue = _waveAnimController!.value;
+        final isSpeaking = _voiceState == AgentVoiceState.speaking;
+        final isListening = _voiceState == AgentVoiceState.listening;
+
+        final pulseScale = 1.0 + (animValue * 0.12);
+
+        return Column(
+          children: [
+            const SizedBox(height: 8),
+            // Central Voice Orb with breathing glow
+            SizedBox(
+              width: 140,
+              height: 140,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Transform.scale(
+                    scale: pulseScale,
+                    child: Container(
+                      width: 124,
+                      height: 124,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: stateColor.withValues(alpha: isSpeaking ? 0.20 : (isListening ? 0.14 : 0.08)),
+                        border: Border.all(
+                          color: stateColor.withValues(alpha: isSpeaking ? 0.55 : 0.30),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          stateColor.withValues(alpha: 0.38),
+                          stateColor.withValues(alpha: 0.12),
+                        ],
+                      ),
+                      border: Border.all(
+                        color: stateColor,
+                        width: isSpeaking ? 3 : 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: stateColor.withValues(alpha: isSpeaking ? 0.40 : 0.22),
+                          blurRadius: 18,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      isSpeaking
+                          ? Icons.volume_up_rounded
+                          : (isListening ? Icons.mic_rounded : Icons.mic_none_rounded),
+                      size: 44,
+                      color: stateColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Dynamic Waveform (9 Frequency Bars)
+            SizedBox(
+              height: 38,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: List.generate(9, (index) {
+                  final offset = index * 0.45;
+                  final wave = math.sin((animValue * 2 * math.pi) + offset);
+                  final normalizedWave = (wave + 1) / 2;
+
+                  double barHeight;
+                  if (isSpeaking) {
+                    barHeight = 12 + (normalizedWave * 26);
+                  } else if (isListening) {
+                    barHeight = 9 + (normalizedWave * 16);
+                  } else {
+                    barHeight = 6 + (normalizedWave * 8);
+                  }
+
+                  final centerFactor = 1.0 - ((index - 4).abs() * 0.12);
+                  barHeight *= centerFactor;
+
+                  return Container(
+                    width: 4.5,
+                    height: barHeight.clamp(6.0, 38.0),
+                    margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                    decoration: BoxDecoration(
+                      color: stateColor.withValues(alpha: 0.70 + (normalizedWave * 0.30)),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Voice State Badge Pill
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: BoxDecoration(
+                color: stateColor.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: stateColor, width: 1.2),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: stateColor,
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    _getVoiceBadgeLabel(),
+                    style: TextStyle(
+                      color: stateColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11.5,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _statusLine,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -886,142 +1067,166 @@ class _InSessionScreenState extends State<InSessionScreen> {
           onPressed: () => Navigator.of(context).pop(),
           tooltip: 'End session and back',
         ),
-        title: const Text('Live Cooking Session'),
+        centerTitle: true,
+        title: const Text(
+          'Live Cooking Session',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
         actions: [
-          IconButton(
-            tooltip: 'Toggle Theme',
-            icon: Icon(_getThemeIcon()),
-            onPressed: _cycleTheme,
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.redAccent.withValues(alpha: 0.15),
+              ),
+              child: IconButton(
+                tooltip: 'End session',
+                icon: const Icon(Icons.call_end_rounded, color: Colors.redAccent, size: 20),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
           ),
-          IconButton(
-            tooltip: 'Hang up session',
-            icon: const Icon(Icons.call_end_rounded, color: Colors.redAccent),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. VOICE STATE VISUALIZER (Real session driven, no fake timers)
-              Center(
-                child: Column(
-                  children: [
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          width: 140,
-                          height: 140,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: stateColor.withValues(alpha: isDark ? 0.12 : 0.10),
-                            border: Border.all(
-                              color: stateColor.withValues(alpha: _voiceState == AgentVoiceState.speaking ? 0.9 : 0.4),
-                              width: _voiceState == AgentVoiceState.speaking ? 4 : 2,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          width: 96,
-                          height: 96,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: stateColor.withValues(alpha: isDark ? 0.25 : 0.18),
-                          ),
-                          child: Icon(
-                            _voiceState == AgentVoiceState.speaking
-                                ? Icons.volume_up_rounded
-                                : (_voiceState == AgentVoiceState.listening
-                                    ? Icons.mic_rounded
-                                    : Icons.mic_none_rounded),
-                            size: 46,
-                            color: stateColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
+              // 1. DYNAMIC WAVEFORM & VOICE ORB (Emerald / Sky Blue)
+              _buildDynamicWaveform(stateColor, isDark),
+              const SizedBox(height: 18),
 
-                    // Voice State Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: stateColor.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: stateColor, width: 1),
-                      ),
-                      child: Text(
-                        _getVoiceBadgeLabel(),
-                        style: TextStyle(
-                          color: stateColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11.5,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-
-                    Text(
-                      _statusLine,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // 2. PASSIVE RECIPE CARD (Read-only, synchronized from agent data channel)
+              // 2. STEP INSTRUCTION CARD (Lime Badge + Large 24pt Bold Text)
               Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                    color: isDark ? const Color(0xFF282E3D) : const Color(0xFFECEFE8),
+                    width: 1.5,
+                  ),
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
-                            child: Text(
-                              _recipeName,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _recipeName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.grey.shade300 : CookTalkTheme.forestGreen,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    if (widget.initialRecipe.verified)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: const Color(0xFF10B981),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.verified_rounded,
+                                              size: 11,
+                                              color: Color(0xFF10B981),
+                                            ),
+                                            SizedBox(width: 3),
+                                            Text(
+                                              'Verified',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF10B981),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    if (SupabaseService.instance.hasCookedBefore(widget.initialRecipe.id))
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFF263042)
+                                              : const Color(0xFFE9EDDF),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          'Cooked before',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark ? CookTalkTheme.primaryAccent : CookTalkTheme.forestGreen,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
+                          const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                             decoration: BoxDecoration(
-                              color: CookTalkTheme.primaryAccent.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(10),
+                              color: CookTalkTheme.primaryAccent,
+                              borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
                               'Step $_currentStep of $_totalSteps',
                               style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: CookTalkTheme.primaryAccent,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: CookTalkTheme.forestGreen,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-
-                      // Progress Bar
+                      const SizedBox(height: 16),
+                      Text(
+                        _currentInstruction,
+                        style: TextStyle(
+                          fontSize: 24,
+                          height: 1.35,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? Colors.white : CookTalkTheme.forestGreen,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(6),
                         child: LinearProgressIndicator(
                           value: stepProgress,
                           minHeight: 6,
@@ -1029,185 +1234,215 @@ class _InSessionScreenState extends State<InSessionScreen> {
                           valueColor: const AlwaysStoppedAnimation<Color>(CookTalkTheme.primaryAccent),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
 
-                      Text(
-                        'CURRENT INSTRUCTION',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.8,
-                          color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-                        ),
+              // 3. MULTI-TIMER SECTION (⏱️ [Label]: [MM:SS] [ Cancel ])
+              if (_timers.isNotEmpty)
+                ..._timers.map((t) {
+                  final rem = t.remainingSeconds;
+                  final mins = rem ~/ 60;
+                  final secs = rem % 60;
+                  final timeStr = '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+                  final isDone = t.isCompleted || rem == 0;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF161920) : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDone
+                            ? Colors.redAccent.withValues(alpha: 0.6)
+                            : (isDark ? CookTalkTheme.primaryAccent.withValues(alpha: 0.5) : const Color(0xFFECEFE8)),
+                        width: 1.5,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _currentInstruction,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          height: 1.45,
-                          fontWeight: FontWeight.w500,
+                    ),
+                    child: Row(
+                      children: [
+                        Text(isDone ? '🔔' : '⏱️', style: const TextStyle(fontSize: 20)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: RichText(
+                            text: TextSpan(
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontFamily: GoogleFonts.plusJakartaSans().fontFamily,
+                                color: isDark ? Colors.white : CookTalkTheme.forestGreen,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: '${t.label}: ',
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                TextSpan(
+                                  text: isDone ? 'READY!' : timeStr,
+                                  style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                    color: isDone ? Colors.redAccent : (isDark ? CookTalkTheme.primaryAccent : CookTalkTheme.forestGreen),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (isDone)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'READY',
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                              ),
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF263042) : const Color(0xFFE9EDDF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.mic_rounded,
+                                  size: 11,
+                                  color: isDark ? Colors.white54 : CookTalkTheme.forestGreen,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Voice cancel',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.white54 : CookTalkTheme.forestGreen,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                })
+              else
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF161920) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF282E3D) : const Color(0xFFECEFE8),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('⏱️', style: TextStyle(fontSize: 18)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'No active timers • Say "Set a 5-minute timer"',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                          ),
                         ),
                       ),
                     ],
                   ),
+                ),
+              const SizedBox(height: 6),
+
+              // 4. AGENT UTTERANCE / SUBTITLE BUBBLE
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF161920) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF282E3D) : const Color(0xFFECEFE8),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('💬', style: TextStyle(fontSize: 18)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '"$_lastAgentUtterance"',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontStyle: FontStyle.italic,
+                              height: 1.4,
+                              color: isDark ? Colors.grey.shade300 : Colors.grey.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_lastTtsTtfbMs != null || _lastE2eLatencyMs != null) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          if (_lastTtsTtfbMs != null)
+                            Text(
+                              'TTS: ${_lastTtsTtfbMs}ms',
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.bold,
+                                color: CookTalkTheme.speakingAccent,
+                              ),
+                            ),
+                          if (_lastTtsTtfbMs != null && _lastE2eLatencyMs != null)
+                            const Text(' • ', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                          if (_lastE2eLatencyMs != null)
+                            Text(
+                              'E2E: ${_lastE2eLatencyMs}ms',
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.bold,
+                                color: CookTalkTheme.listeningAccent,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(height: 14),
 
-              // 3. PASSIVE TIMER CARD (Populated only from timer_started/timer_completed)
-              if (_timers.isNotEmpty) ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.timer_rounded, color: CookTalkTheme.timerAccent, size: 20),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Active Timers',
-                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
-                            ),
-                            const Spacer(),
-                            Text(
-                              'Voice-driven',
-                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        ..._timers.map((t) {
-                          final rem = t.remainingSeconds;
-                          final mins = rem ~/ 60;
-                          final secs = rem % 60;
-                          final timeStr = '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-                          final isDone = t.isCompleted || rem == 0;
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: isDone
-                                  ? (isDark ? const Color(0xFF2E1C1A) : const Color(0xFFFEF2F2))
-                                  : (isDark ? const Color(0xFF24221A) : const Color(0xFFFFFBEB)),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: isDone
-                                    ? Colors.redAccent.withValues(alpha: 0.4)
-                                    : CookTalkTheme.timerAccent.withValues(alpha: 0.4),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      isDone ? Icons.alarm_on_rounded : Icons.hourglass_top_rounded,
-                                      size: 18,
-                                      color: isDone ? Colors.redAccent : CookTalkTheme.timerAccent,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      t.label,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 13,
-                                        color: isDone ? Colors.redAccent : null,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Text(
-                                  isDone ? 'READY!' : timeStr,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.bold,
-                                    color: isDone ? Colors.redAccent : CookTalkTheme.timerAccent,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
-
-              // 4. LIVE SPOKEN UTTERANCE & LATENCY HUD
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'LAST AGENT UTTERANCE',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
-                          ),
-                          if (_lastTtsTtfbMs != null || _lastE2eLatencyMs != null)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_lastTtsTtfbMs != null)
-                                  Text(
-                                    'TTS: ${_lastTtsTtfbMs}ms',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontFamily: 'monospace',
-                                      fontWeight: FontWeight.bold,
-                                      color: CookTalkTheme.speakingAccent,
-                                    ),
-                                  ),
-                                if (_lastTtsTtfbMs != null && _lastE2eLatencyMs != null)
-                                  const Text(' • ', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                                if (_lastE2eLatencyMs != null)
-                                  Text(
-                                    'E2E: ${_lastE2eLatencyMs}ms',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontFamily: 'monospace',
-                                      fontWeight: FontWeight.bold,
-                                      color: CookTalkTheme.primaryAccent,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '"$_lastAgentUtterance"',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                          color: isDark ? Colors.grey.shade300 : Colors.grey.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // READ-ONLY FOOTER ENFORCING DESIGN BOUNDARY
+              // 5. HANDS-FREE FOOTER HINT
               Center(
                 child: Text(
-                  'Hands-Free Only • Say "Next step", "Repeat step", or "Set a timer"',
+                  'Hands-Free Only • Say "Next step", "Set a timer"',
                   style: TextStyle(
-                    fontSize: 11.5,
-                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                    letterSpacing: 0.2,
                   ),
                 ),
               ),

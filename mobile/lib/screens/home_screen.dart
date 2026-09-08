@@ -1,5 +1,6 @@
+import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../models/dish.dart';
 import '../services/supabase_service.dart';
 
@@ -19,25 +20,130 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedCategory = 'all';
   List<Dish> _dishes = [];
   List<Dish> _recentAiDishes = [];
+  List<String> _staticDishNames = [];
   bool _isLoading = true;
+
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadDishes();
+    SupabaseService.instance.cookHistoryNotifier.addListener(_loadDishes);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    SupabaseService.instance.cookHistoryNotifier.removeListener(_loadDishes);
+    super.dispose();
   }
 
   Future<void> _loadDishes() async {
     setState(() => _isLoading = true);
     final dishes = await SupabaseService.instance.fetchDishes();
     final recentAi = await SupabaseService.instance.fetchRecentlyViewedAIDishes();
+    final staticNames = await SupabaseService.instance.loadStaticDishNames();
     if (mounted) {
       setState(() {
         _dishes = dishes;
         _recentAiDishes = recentAi;
+        _staticDishNames = staticNames;
         _isLoading = false;
       });
     }
+  }
+
+  int _levenshtein(String a, String b) {
+    if (a == b) return 0;
+    if (a.isEmpty) return b.length;
+    if (b.isEmpty) return a.length;
+
+    List<int> v0 = List<int>.generate(b.length + 1, (i) => i);
+    List<int> v1 = List<int>.filled(b.length + 1, 0);
+
+    for (int i = 0; i < a.length; i++) {
+      v1[0] = i + 1;
+      for (int j = 0; j < b.length; j++) {
+        int cost = (a[i] == b[j]) ? 0 : 1;
+        v1[j + 1] = [v1[j] + 1, v0[j + 1] + 1, v0[j] + cost].reduce((curr, next) => curr < next ? curr : next);
+      }
+      for (int j = 0; j < v0.length; j++) {
+        v0[j] = v1[j];
+      }
+    }
+    return v1[b.length];
+  }
+
+  bool _isFuzzyMatch(String query, String target) {
+    final q = Dish.normalize(query);
+    final t = Dish.normalize(target);
+    if (q.isEmpty || t.isEmpty) return false;
+
+    // Direct whole-string match or substring match (if query is at least 3 chars)
+    if (q.length >= 3 && t.contains(q)) return true;
+    if (t.length >= 3 && q.contains(t)) return true;
+
+    final allTargetWords = t.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+
+    // For short queries (e.g. 2 chars), check prefix matching on target words
+    if (q.length < 3) {
+      return allTargetWords.any((tw) => tw.startsWith(q));
+    }
+
+    final qWords = q.split(RegExp(r'\s+')).where((w) => w.length >= 3).toList();
+    final tWords = allTargetWords.where((w) => w.length >= 3).toList();
+    if (qWords.isEmpty || tWords.isEmpty) return false;
+
+    for (final qw in qWords) {
+      for (final tw in tWords) {
+        // Exact word match
+        if (qw == tw) return true;
+
+        // Prefix match: e.g. qw 'panc' starts tw 'pancake'
+        if (qw.length >= 3 && tw.startsWith(qw)) return true;
+        if (tw.length >= 4 && qw.startsWith(tw)) return true;
+
+        // Typo tolerance via Levenshtein distance
+        final lenDiff = (qw.length - tw.length).abs();
+        if (lenDiff > 2) continue; // length difference too large for single-word typo
+
+        final minLen = math.min(qw.length, tw.length);
+        if (minLen < 4) continue; // no fuzzy matching for 3-letter words
+
+        final maxDist = minLen <= 5 ? 1 : 2;
+        if (_levenshtein(qw, tw) <= maxDist) return true;
+      }
+    }
+    return false;
+  }
+
+  List<Dish> get _matchedExistingDishes {
+    final q = _searchQuery.trim();
+    if (q.isEmpty) return [];
+    return _dishes
+        .where((d) =>
+            _isFuzzyMatch(q, d.title) ||
+            _isFuzzyMatch(q, d.slug) ||
+            _isFuzzyMatch(q, d.normalizedName))
+        .toList();
+  }
+
+  List<String> get _matchedStaticNames {
+    final q = _searchQuery.trim();
+    if (q.isEmpty) return [];
+    final existingNorms = _dishes.map((d) => d.normalizedName).toSet();
+    return _staticDishNames
+        .where((name) {
+          final norm = Dish.normalize(name);
+          if (existingNorms.contains(norm)) return false;
+          return _isFuzzyMatch(q, name);
+        })
+        .take(6)
+        .toList();
   }
 
   // Exact 8 categories matching the reference design image
@@ -211,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // 3. SEARCH BAR: Pill-shaped
+              // 3. SEARCH BAR: Search-as-you-type with zero network calls
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Container(
@@ -220,7 +326,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: isDark ? const Color(0xFF161A24) : Colors.white,
                     borderRadius: BorderRadius.circular(26),
                     border: Border.all(
-                      color: isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8),
+                      color: _searchFocusNode.hasFocus
+                          ? const Color(0xFFD2E68B)
+                          : (isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8)),
+                      width: _searchFocusNode.hasFocus ? 1.5 : 1,
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -235,24 +344,59 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Icon(
                         Icons.search_rounded,
-                        color: isDark ? Colors.white38 : const Color(0xFF9E9E9E),
+                        color: isDark ? Colors.white54 : const Color(0xFF143826),
                         size: 22,
                       ),
                       const SizedBox(width: 10),
-                      Text(
-                        'Search here',
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: isDark ? Colors.white38 : const Color(0xFF9E9E9E),
-                          fontWeight: FontWeight.w400,
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          onChanged: (val) {
+                            setState(() {
+                              _searchQuery = val;
+                            });
+                          },
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: isDark ? Colors.white : const Color(0xFF143826),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Search dishes (e.g. paneer, ramen)...',
+                            hintStyle: TextStyle(
+                              fontSize: 14,
+                              color: isDark ? Colors.white38 : const Color(0xFF9E9E9E),
+                              fontWeight: FontWeight.w400,
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
                         ),
                       ),
+                      if (_searchQuery.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            _searchController.clear();
+                            setState(() {
+                              _searchQuery = '';
+                            });
+                          },
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: isDark ? Colors.white54 : Colors.grey.shade600,
+                            size: 20,
+                          ),
+                        ),
                     ],
                   ),
                 ),
               ),
 
-              const SizedBox(height: 18),
+              if (_searchQuery.trim().isNotEmpty) ...[
+                _buildSearchResults(isDark),
+              ] else ...[
+                const SizedBox(height: 18),
 
               // ==================================================================
               // BANNER CTA: Cooking & Prep Assistant
@@ -705,6 +849,72 @@ class _HomeScreenState extends State<HomeScreen> {
 
                                   const SizedBox(height: 10),
 
+                                  // Trust badge + Cooked before
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: dish.verified
+                                              ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                              : const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(5),
+                                          border: Border.all(
+                                            color: dish.verified
+                                                ? const Color(0xFF10B981)
+                                                : const Color(0xFFF59E0B),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              dish.verified
+                                                  ? Icons.verified_rounded
+                                                  : Icons.auto_awesome_rounded,
+                                              size: 10,
+                                              color: dish.verified
+                                                  ? const Color(0xFF10B981)
+                                                  : const Color(0xFFF59E0B),
+                                            ),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              dish.verified ? 'Verified' : 'AI-suggested',
+                                              style: TextStyle(
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: dish.verified
+                                                    ? const Color(0xFF10B981)
+                                                    : const Color(0xFFF59E0B),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (SupabaseService.instance.hasCookedBefore(dish.id) ||
+                                          SupabaseService.instance.hasCookedBefore(dish.slug))
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: isDark ? const Color(0xFF263042) : const Color(0xFFE9EDDF),
+                                            borderRadius: BorderRadius.circular(5),
+                                          ),
+                                          child: Text(
+                                            'Cooked before',
+                                            style: TextStyle(
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+
                                   // Dish Title
                                   Text(
                                     dish.title,
@@ -735,11 +945,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
               ),
             ],
-          ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _showRecipePreview(BuildContext context, Dish dish) {
     showModalBottomSheet(
@@ -791,6 +1002,70 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: dish.verified
+                                ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                : const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: dish.verified
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFF59E0B),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                dish.verified
+                                    ? Icons.verified_rounded
+                                    : Icons.auto_awesome_rounded,
+                                size: 12,
+                                color: dish.verified
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFFF59E0B),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                dish.verified ? 'Verified' : 'AI-suggested, unverified',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: dish.verified
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFFF59E0B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (SupabaseService.instance.hasCookedBefore(dish.id) ||
+                            SupabaseService.instance.hasCookedBefore(dish.slug)) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF263042) : const Color(0xFFE9EDDF),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Cooked before',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 10),
                     Text(
                       dish.description,
                       style: TextStyle(
@@ -864,6 +1139,546 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSearchResults(bool isDark) {
+    final existingMatches = _matchedExistingDishes;
+    final staticMatches = _matchedStaticNames;
+    final query = _searchQuery.trim();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF161A24) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 1. EXISTING DISHES SECTION (Matches ranked first)
+            if (existingMatches.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                child: Text(
+                  'MATCHING RECIPES (${existingMatches.length})',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                  ),
+                ),
+              ),
+              ...existingMatches.map((dish) {
+                final hasCooked = SupabaseService.instance.hasCookedBefore(dish.id) ||
+                    SupabaseService.instance.hasCookedBefore(dish.slug);
+                return InkWell(
+                  onTap: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                    widget.onSelectRecipeForCooking?.call(dish);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.network(
+                            dish.imageUrl,
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 44,
+                              height: 44,
+                              color: isDark ? const Color(0xFF263042) : const Color(0xFFE5E7EB),
+                              child: const Icon(Icons.restaurant, size: 20),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                dish.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark ? Colors.white : const Color(0xFF143826),
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: dish.verified
+                                          ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                          : const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      dish.verified ? 'Verified' : 'AI-suggested',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: dish.verified
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFFF59E0B),
+                                      ),
+                                    ),
+                                  ),
+                                  if (hasCooked) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? const Color(0xFF263042) : const Color(0xFFE9EDDF),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        'Cooked before',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 13,
+                          color: isDark ? Colors.white24 : Colors.black26,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              const Divider(height: 1),
+            ],
+
+            // 2. STATIC SUGGESTIONS (Ranked second, visually distinct)
+            if (staticMatches.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                child: Text(
+                  'SUGGESTED DISHES (TAP TO GENERATE)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: isDark ? Colors.white54 : Colors.grey.shade600,
+                  ),
+                ),
+              ),
+              ...staticMatches.map((name) {
+                return InkWell(
+                  onTap: () => _showConfirmToGenerateSheet(context, name),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF263042) : const Color(0xFFF1F5F9),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 18,
+                            color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF7D9344),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : const Color(0xFF1E293B),
+                                ),
+                              ),
+                              Text(
+                                'New dish • Tap to generate with AI',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: isDark ? Colors.white38 : Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Text('✨', style: TextStyle(fontSize: 14)),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              const Divider(height: 1),
+            ],
+
+            // 3. UNLISTED QUERY TILE (Prompt to generate exact query)
+            InkWell(
+              onTap: () => _showConfirmToGenerateSheet(context, query),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD2E68B).withValues(alpha: 0.25),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.add_rounded,
+                        size: 20,
+                        color: Color(0xFF143826),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          RichText(
+                            text: TextSpan(
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? Colors.white : const Color(0xFF143826),
+                              ),
+                              children: [
+                                const TextSpan(text: 'Generate recipe for "'),
+                                TextSpan(
+                                  text: query,
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                const TextSpan(text: '"'),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'AI-developed recipe with custom steps and timers',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: isDark ? Colors.white54 : Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Color(0xFFD2E68B),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showConfirmToGenerateSheet(BuildContext context, String dishName) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        bool isGenerating = false;
+        String? errorMessage;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF161A24) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white24 : Colors.black12,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD2E68B).withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFD2E68B)),
+                        ),
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Color(0xFF143826),
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Generate Recipe with AI?',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: isDark ? Colors.white : const Color(0xFF143826),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              dishName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF7D9344),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1F2532) : const Color(0xFFF4F7EE),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF2B3545) : const Color(0xFFDCE4CD),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.restaurant_menu_rounded,
+                              size: 20,
+                              color: Color(0xFF7D9344),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Ready to cook "$dishName"?',
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  color: isDark ? Colors.white : const Color(0xFF143826),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Chef CookTalk will craft a tailored recipe with step-by-step guidance, ingredient measurements, and interactive cooking timers.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.grey.shade300 : const Color(0xFF2C3E2D),
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            _buildFeaturePill(Icons.mic_rounded, 'Voice Guided', isDark),
+                            _buildFeaturePill(Icons.timer_outlined, 'Smart Timers', isDark),
+                            _buildFeaturePill(Icons.swap_horiz_rounded, 'Ingredient Swaps', isDark),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorMessage!,
+                      style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  if (isGenerating) ...[
+                    Center(
+                      child: Column(
+                        children: [
+                          const CircularProgressIndicator(color: Color(0xFFD2E68B)),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Chef AI is developing your recipe...',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white70 : const Color(0xFF143826),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: isDark ? Colors.white70 : Colors.grey.shade700,
+                              side: BorderSide(
+                                color: isDark ? const Color(0xFF2B3545) : const Color(0xFFECEFE8),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              setSheetState(() {
+                                isGenerating = true;
+                                errorMessage = null;
+                              });
+                              try {
+                                final host = Platform.isAndroid ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+                                final generated = await SupabaseService.instance.generateDishViaServer(dishName, host);
+                                if (!mounted || !sheetContext.mounted) return;
+                                Navigator.of(sheetContext).pop();
+                                _searchController.clear();
+                                setState(() {
+                                  _searchQuery = '';
+                                  if (!_dishes.any((d) => d.id == generated.id)) {
+                                    _dishes.insert(0, generated);
+                                  }
+                                });
+                                widget.onSelectRecipeForCooking?.call(generated);
+                              } catch (e) {
+                                setSheetState(() {
+                                  isGenerating = false;
+                                  errorMessage = 'Generation failed: $e';
+                                });
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFD2E68B),
+                              foregroundColor: const Color(0xFF143826),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.auto_awesome_rounded, size: 16),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Generate Recipe',
+                                  style: TextStyle(fontWeight: FontWeight.w900),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFeaturePill(IconData icon, String label, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF161A24) : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2B3545) : const Color(0xFFE2E8F0),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: const Color(0xFF7D9344)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white70 : const Color(0xFF2C3E2D),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

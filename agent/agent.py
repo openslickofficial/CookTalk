@@ -191,11 +191,27 @@ class WarmRimeTTS(rime.TTS):
         await super().aclose()
 
 RECIPES_FILE = Path(__file__).resolve().parent / "recipes.json"
-if RECIPES_FILE.exists():
-    with open(RECIPES_FILE, "r", encoding="utf-8") as f:
-        RECIPES_DATA = json.load(f)
-else:
-    RECIPES_DATA = {}
+GENERATED_FILE = Path(__file__).resolve().parent / "generated_dishes.json"
+
+
+def load_all_recipes() -> dict:
+    data = {}
+    if RECIPES_FILE.exists():
+        try:
+            with open(RECIPES_FILE, "r", encoding="utf-8") as f:
+                data.update(json.load(f))
+        except Exception as e:
+            logger.warning(f"Error reading recipes.json: {e}")
+    if GENERATED_FILE.exists():
+        try:
+            with open(GENERATED_FILE, "r", encoding="utf-8") as f:
+                data.update(json.load(f))
+        except Exception as e:
+            logger.warning(f"Error reading generated_dishes.json: {e}")
+    return data
+
+
+RECIPES_DATA = load_all_recipes()
 
 COOKING_CO_PILOT_PROMPT = """You are CookTalk, an expert hands-free voice cooking assistant for cooks with busy or messy hands.
 CRITICAL SPEAKING STYLE:
@@ -208,7 +224,7 @@ Rules & Capabilities:
 2. ANY Culinary Dish or Question: You know thousands of recipes, techniques, cooking temps, and baking ratios! If the user asks how to cook ANY dish or asks any cooking question (even outside the catalog), answer directly and expertly in 1-2 punchy sentences.
 3. Steps: Call `next_step` for next step, `repeat_step` to repeat, `previous_step` for previous step, `get_current_step` for current step.
 4. Ingredients & Substitutions: Call `get_ingredient_quantity` or `suggest_substitution`. If not in the active recipe, answer using your culinary knowledge.
-5. Timers: Call `start_cooking_timer` whenever the user asks for a timer.
+5. Timers: Call `start_cooking_timer` whenever the user asks for a timer. Call `cancel_cooking_timer` whenever the user asks to cancel, stop, or turn off a timer.
 6. Repeat: When repeat_step is called, recite the instruction verbatim without paraphrasing.
 7. Out of scope: Only decline non-cooking topics (e.g. coding, politics) politely in one sentence.
 """
@@ -257,6 +273,10 @@ TOOL_ACKNOWLEDGMENTS = {
         "Setting that timer right now.",
         "Starting your timer.",
     ],
+    "cancel_cooking_timer": [
+        "Cancelling that timer for you.",
+        "Stopping your timer now.",
+    ],
     "get_current_step": [
         "Checking where we are.",
         "Looking up the current step.",
@@ -274,6 +294,7 @@ class CookingCoPilot:
         self.session: AgentSession | None = None
         self.room: rtc.Room | None = None
         self.active_timers: dict[str, asyncio.Task] = {}
+        self.has_explicit_recipe = False
 
     def set_session(self, session: AgentSession) -> None:
         self.session = session
@@ -521,6 +542,43 @@ class CookingCoPilot:
 
         @llm.function_tool
         @track_tool
+        async def cancel_cooking_timer(label: str | None = None) -> str:
+            """Cancel or stop an active cooking timer. Call this whenever the user says 'cancel timer', 'stop timer', 'turn off timer', or 'cancel the [label] timer'."""
+            if not copilot.active_timers:
+                return "You don't have any active timers running right now."
+
+            target_label = None
+            if label:
+                clean_target = label.strip().lower()
+                for k in list(copilot.active_timers.keys()):
+                    if clean_target in k.lower() or k.lower() in clean_target:
+                        target_label = k
+                        break
+
+            # If not matched or no label specified, cancel the only running timer or the most recent
+            if not target_label and copilot.active_timers:
+                target_label = list(copilot.active_timers.keys())[-1]
+
+            if target_label and target_label in copilot.active_timers:
+                task = copilot.active_timers.pop(target_label)
+                task.cancel()
+                logger.info(f"[TIMER CANCELLED] Manually cancelled timer for '{target_label}'.")
+                await copilot.broadcast({
+                    "type": "timer_cancelled",
+                    "label": target_label,
+                })
+                return f"Cancelled the timer for {target_label}."
+            elif target_label:
+                await copilot.broadcast({
+                    "type": "timer_cancelled",
+                    "label": target_label,
+                })
+                return f"Cancelled the timer for {target_label}."
+
+            return "No matching timer found to cancel."
+
+        @llm.function_tool
+        @track_tool
         async def get_recipe_ingredients(recipe_name_or_id: str | None = None) -> str:
             """Get ingredients for a specific dish or recipe (e.g. 'chocolate chip cookies', 'cacio e pepe', 'pancakes', 'ribeye steak', 'salmon', 'tacos', 'scrambled eggs'). Pass the name of the dish if mentioned."""
             target = recipe_name_or_id.strip().lower() if recipe_name_or_id else ""
@@ -562,6 +620,7 @@ class CookingCoPilot:
             get_recipe_ingredients,
             suggest_substitution,
             start_cooking_timer,
+            cancel_cooking_timer,
         ]
 
 
@@ -1108,19 +1167,64 @@ async def entrypoint(ctx: JobContext):
             msg_type = payload.get("type")
             if msg_type == "select_recipe":
                 recipe_id = payload.get("recipe_id")
-                if recipe_id in copilot.recipes:
-                    copilot.active_recipe_id = recipe_id
-                    copilot.current_step_index = 1
-                    recipe = copilot.active_recipe
-                    steps = recipe.get("steps", [])
-                    logger.info(f"[CLIENT UI SYNC] Recipe switched to {recipe_id}")
+                copilot.has_explicit_recipe = True
+
+                raw_steps = payload.get("steps") or []
+                formatted_steps = []
+                for s in raw_steps:
+                    s_num = s.get("step_number") or s.get("step") or (len(formatted_steps) + 1)
+                    formatted_steps.append({
+                        "step_number": s_num,
+                        "instruction": s.get("instruction", ""),
+                        "timer_seconds": s.get("timer_seconds"),
+                        "timer_label": s.get("timer_label"),
+                    })
+
+                if recipe_id not in copilot.recipes:
+                    latest_all = load_all_recipes()
+                    if recipe_id in latest_all:
+                        copilot.recipes[recipe_id] = latest_all[recipe_id]
+                    else:
+                        copilot.recipes[recipe_id] = {
+                            "name": payload.get("recipe_name") or recipe_id.replace("_", " ").replace("-", " ").title(),
+                            "description": payload.get("description", ""),
+                            "steps": formatted_steps,
+                            "ingredients": payload.get("ingredients") or [],
+                        }
+
+                recipe = copilot.recipes[recipe_id]
+                if not recipe.get("steps") and formatted_steps:
+                    recipe["steps"] = formatted_steps
+
+                copilot.active_recipe_id = recipe_id
+                copilot.current_step_index = 1
+                recipe_steps = recipe.get("steps", [])
+                rec_name = recipe.get("name", payload.get("recipe_name", recipe_id))
+                logger.info(f"[CLIENT UI SYNC] Recipe switched to {recipe_id} ('{rec_name}')")
+                asyncio.create_task(copilot.broadcast({
+                    "type": "recipe_state",
+                    "recipe_id": copilot.active_recipe_id,
+                    "recipe_name": rec_name,
+                    "current_step": 1,
+                    "total_steps": len(recipe_steps),
+                    "instruction": recipe_steps[0]["instruction"] if recipe_steps else "",
+                }))
+
+                greeting_text = f"Hey Chef! I've got your {rec_name} ready. Let me know when you'd like step 1, or ask for the ingredients!"
+                logger.info(f"[AGENT GREETING] Speaking tailored recipe greeting: '{greeting_text}'")
+                asyncio.create_task(session.say(
+                    greeting_text,
+                    allow_interruptions=True,
+                    add_to_chat_ctx=True,
+                ))
+            elif msg_type == "cancel_timer":
+                lbl = payload.get("label")
+                if lbl and lbl in copilot.active_timers:
+                    t = copilot.active_timers.pop(lbl)
+                    t.cancel()
                     asyncio.create_task(copilot.broadcast({
-                        "type": "recipe_state",
-                        "recipe_id": copilot.active_recipe_id,
-                        "recipe_name": recipe["name"],
-                        "current_step": 1,
-                        "total_steps": len(steps),
-                        "instruction": steps[0]["instruction"] if steps else "",
+                        "type": "timer_cancelled",
+                        "label": lbl,
                     }))
             elif msg_type == "user_text":
                 text = payload.get("text", "").strip()
@@ -1141,8 +1245,17 @@ async def entrypoint(ctx: JobContext):
                 if not ctx.room.remote_participants:
                     logger.info("[AGENT GREETING] Waiting for chef to join room...")
                     await ctx.wait_for_participant()
-                await asyncio.sleep(1.0)
-                logger.info("[AGENT GREETING] Speaking initial greeting to chef...")
+                # Wait up to 4.5s for client to join and send select_recipe
+                for _ in range(45):
+                    if getattr(copilot, "has_explicit_recipe", False):
+                        logger.info("[AGENT GREETING] Recipe already selected by client; skipping generic greeting.")
+                        return
+                    await asyncio.sleep(0.1)
+
+                if getattr(copilot, "has_explicit_recipe", False):
+                    logger.info("[AGENT GREETING] Recipe already selected by client; skipping generic greeting.")
+                    return
+                logger.info("[AGENT GREETING] Speaking initial generic greeting to chef...")
                 session.say(
                     "Hey Chef! I'm CookTalk, your hands-free cooking co-pilot. What are we cooking today?",
                     allow_interruptions=True,

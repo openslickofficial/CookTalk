@@ -1,0 +1,301 @@
+{
+  "paneer-butter-masala": {
+    "id": "paneer-butter-masala",
+    "slug": "paneer-butter-masala",
+    "title": "Classic Paneer Butter Masala",
+    "name": "Classic Paneer Butter Masala",
+    "description": "Tender cubes of paneer simmered in a rich, velvety tomato and butter gravy, spiced with garam masala and finished with a touch of cream.",
+    "category": "dinner",
+    "cuisine": "Indian",
+    "prep_time_minutes": 20,
+    "cook_time_minutes": 30,
+    "servings": 4,
+    "base_servings": 4,
+    "difficulty": "Medium",
+    "image_url": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
+    "is_trending": false,
+    "verified": false,
+    "source": "ai_generated",
+    "normalized_name": "paneer butter masala",
+    "ingredients": [
+      {
+        "name": "paneer",
+        "quantity": "500",
+        "unit": "g"
+      },
+      {
+        "name": "tomatoes",
+        "quantity": "4",
+        "unit": "medium"
+      },
+      {
+        "name": "butter",
+        "quantity": "4",
+        "unit": "tbsp"
+      },
+      {
+        "name": "onion",
+        "quantity": "2",
+        "unit": "medium"
+      },
+      {
+        "name": "garlic",
+        "quantity": "6",
+        "unit": "cloves"
+      },
+      {
+        "name": "ginger",
+        "quantity": "1",
+        "unit": "inch"
+      },
+      {
+        "name": "cashews",
+        "quantity": "1/4",
+        "unit": "cup"
+      },
+      {
+        "name": "tomato puree",
+        "quantity": "1",
+        "unit": "cup"
+      },
+      {
+        "name": "heavy cream",
+        "quantity": "1/2",
+        "unit": "cup"
+      },
+      {
+        "name": "garam masala",
+        "quantity": "1",
+        "unit": "tsp"
+      },
+      {
+        "name": "cumin powder",
+        "quantity": "1/2",
+        "unit": "tsp"
+      },
+      {
+        "name": "red chili powder",
+        "quantity": "1/2",
+        "unit": "tsp"
+      },
+      {
+        "name": "salt",
+        "quantity": "to taste",
+        "unit": "pinch"
+      },
+      {
+        "name": "sugar",
+        "quantity": "1",
+        "unit": "tsp"
+      },
+      {
+        "name": "kashmiri chili powder",
+        "quantity": "1",
+        "unit": "tsp"
+      },
+      {
+        "name": "water",
+        "quantity": "1",
+        "unit": "cup"
+      }
+    ],
+    "steps": [
+      {
+        "step": 1,
+        "step_number": 1,
+        "instruction": "Soak the cashews in warm water for 15 minutes to soften. Simultaneously, cut the paneer into 1-inch cubes and soak them in warm water for 10 minutes to remove excess salt and soften the texture.",
+        "timer_seconds": 900,
+        "timer_label": "soak"
+      },
+      {
+        "step": 2,
+        "step_number": 2,
+        "instruction": "Blanch the tomatoes by dipping them in boiling water for 30 seconds, then immediately transferring to ice water. Peel the skins and chop the tomatoes into a coarse puree.",
+        "timer_seconds": 180,
+        "timer_label": "blanch"
+      },
+      {
+        "step": 3,
+        "step_number": 3,
+        "instruction": "In a blender, combine the soaked cashews, blanched tomato puree, 1/2 cup of water, and 1/2 cup of tomato puree. Blend until completely smooth and creamy.",
+        "timer_seconds": 60,
+        "timer_label": "blend"
+      },
+      {
+        "step": 4,
+        "step_number": 4,
+        "instruction": "Heat 2 tablespoons of butter in a heavy-bottomed pan over medium heat. Add the chopped onions and saut\u00e9 until golden brown. Add minced garlic and ginger, cooking for 1 minute until fragrant.",
+        "timer_seconds": 480,
+        "timer_label": "saut\u00e9"
+      },
+      {
+        "step": 5,
+        "step_number": 5,
+        "instruction": "Add the blended cashew-tomato mixture to the pan. Stir well and let it simmer until the oil separates from the sides and the gravy thickens slightly. Add cumin powder, red chili powder, kashmiri chili powder, sugar, and salt.",
+        "timer_seconds": 600,
+        "timer_label": "simmer"
+      },
+      {
+        "step": 6,
+        "step_number": 6,
+        "instruction": "Add the remaining butter, heavy cream, and garam masala. Stir gently to combine. Add the drained paneer cubes and simmer for 5 minutes on low heat to allow the flavors to meld.",
+        "timer_seconds": 300,
+        "timer_label": "simmer"
+      },
+      {
+        "step": 7,
+        "step_number": 7,
+        "instruction": "Garnish with fresh cream swirls and chopped coriander leaves. Serve hot with naan, roti, or basmati rice.",
+        "timer_seconds": null,
+        "timer_label": null
+      }
+    ],
+    "substitutions": {
+      "paneer": "firm tofu",
+      "cashews": "almonds or walnuts",
+      "heavy cream": "coconut cream or evaporated milk"
+    }
+  },
+  "classic-chinese-fried-rice": {
+    "id": "classic-chinese-fried-rice",
+    "slug": "classic-chinese-fried-rice",
+    "title": "Classic Chinese Style Fried Rice",
+    "name": "Classic Chinese Style Fried Rice",
+    "description": "A savory and aromatic staple featuring fluffy day-old rice, tender egg ribbons, and fresh vegetables stir-fried in a high-heat wok.",
+    "category": "lunch",
+    "cuisine": "Asian",
+    "prep_time_minutes": 15,
+    "cook_time_minutes": 10,
+    "servings": 4,
+    "base_servings": 4,
+    "difficulty": "Easy",
+    "image_url": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
+    "is_trending": false,
+    "verified": false,
+    "source": "ai_generated",
+    "normalized_name": "fried rice",
+    "ingredients": [
+      {
+        "name": "day-old cooked jasmine rice",
+        "quantity": "4",
+        "unit": "cups"
+      },
+      {
+        "name": "eggs",
+        "quantity": "3",
+        "unit": "large"
+      },
+      {
+        "name": "shredded chicken breast",
+        "quantity": "1",
+        "unit": "cup"
+      },
+      {
+        "name": "frozen peas",
+        "quantity": "0.5",
+        "unit": "cup"
+      },
+      {
+        "name": "frozen diced carrots",
+        "quantity": "0.5",
+        "unit": "cup"
+      },
+      {
+        "name": "green onions",
+        "quantity": "4",
+        "unit": "stalks"
+      },
+      {
+        "name": "sesame oil",
+        "quantity": "1",
+        "unit": "tablespoon"
+      },
+      {
+        "name": "neutral high-heat oil (like canola)",
+        "quantity": "3",
+        "unit": "tablespoons"
+      },
+      {
+        "name": "soy sauce",
+        "quantity": "3",
+        "unit": "tablespoons"
+      },
+      {
+        "name": "garlic",
+        "quantity": "2",
+        "unit": "cloves"
+      },
+      {
+        "name": "ginger",
+        "quantity": "1",
+        "unit": "inch"
+      },
+      {
+        "name": "white pepper",
+        "quantity": "0.25",
+        "unit": "teaspoon"
+      },
+      {
+        "name": "salt",
+        "quantity": "to taste",
+        "unit": "pinch"
+      }
+    ],
+    "steps": [
+      {
+        "step": 1,
+        "step_number": 1,
+        "instruction": "Crack eggs into a bowl, add a pinch of salt, and whisk until frothy. Chop green onions, mince garlic, and grate ginger.",
+        "timer_seconds": null,
+        "timer_label": null
+      },
+      {
+        "step": 2,
+        "step_number": 2,
+        "instruction": "Heat a wok or large skillet over high heat. Add 1 tablespoon of neutral oil. Pour in the eggs and scramble gently until just set but still moist. Remove eggs from the pan and set aside.",
+        "timer_seconds": 90,
+        "timer_label": "scramble eggs"
+      },
+      {
+        "step": 3,
+        "step_number": 3,
+        "instruction": "Add remaining neutral oil to the hot wok. Add chicken, garlic, and ginger. Stir-fry for 2-3 minutes until the chicken is cooked through and fragrant.",
+        "timer_seconds": 180,
+        "timer_label": "stir-fry aromatics"
+      },
+      {
+        "step": 4,
+        "step_number": 4,
+        "instruction": "Add peas and carrots. Stir-fry for 1 minute to heat them through. Push the mixture to the side of the wok.",
+        "timer_seconds": 60,
+        "timer_label": "cook vegetables"
+      },
+      {
+        "step": 5,
+        "step_number": 5,
+        "instruction": "Add the day-old rice to the wok. Break up any clumps and toss continuously to ensure even heating and to prevent sticking. Cook for 3-4 minutes until the rice is hot and slightly crispy in spots.",
+        "timer_seconds": 240,
+        "timer_label": "toast rice"
+      },
+      {
+        "step": 6,
+        "step_number": 6,
+        "instruction": "Return the scrambled eggs to the wok. Add soy sauce, white pepper, and sesame oil. Toss everything together for 1 minute until well combined and glossy.",
+        "timer_seconds": 60,
+        "timer_label": "combine flavors"
+      },
+      {
+        "step": 7,
+        "step_number": 7,
+        "instruction": "Turn off the heat. Garnish with chopped green onions. Taste and adjust with salt if necessary. Serve immediately.",
+        "timer_seconds": null,
+        "timer_label": null
+      }
+    ],
+    "substitutions": {
+      "day-old cooked jasmine rice": "Day-old cooked basmati or long-grain white rice",
+      "shredded chicken breast": "Cooked shrimp, diced pork, or tofu",
+      "soy sauce": "Tamari (for gluten-free) or coconut aminos"
+    }
+  }
+}

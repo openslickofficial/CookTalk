@@ -4,7 +4,7 @@ import '../main.dart';
 import '../models/dish.dart';
 import 'home_screen.dart';
 import 'favorites_screen.dart';
-import 'explore_screen.dart';
+import 'recently_viewed_screen.dart';
 import 'profile_screen.dart';
 
 class MainNavScreen extends StatefulWidget {
@@ -25,12 +25,18 @@ class _MainNavScreenState extends State<MainNavScreen> {
             name: dish.title,
             description: dish.description,
             totalSteps: dish.steps.isNotEmpty ? dish.steps.length : 5,
+            verified: dish.verified,
+            source: dish.source,
+            steps: dish.steps.map((s) => {'step': s.step, 'instruction': s.instruction}).toList(),
+            ingredients: dish.ingredients.map((i) => {'name': i.name, 'quantity': i.quantity, 'unit': i.unit}).toList(),
           )
         : const RecipeItem(
             id: 'pancakes',
             name: 'Golden Diner-Style Fluffy Buttermilk Pancakes',
             description: 'Classic diner-style pancakes with crispy edges and soft centers.',
             totalSteps: 5,
+            verified: false,
+            source: 'curated',
           );
 
     Navigator.of(context).push(
@@ -48,7 +54,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
     final pages = [
       HomeScreen(onSelectRecipeForCooking: _launchCookingSession),
       FavoritesScreen(onSelectRecipeForCooking: _launchCookingSession),
-      ExploreScreen(onSelectRecipeForCooking: _launchCookingSession),
+      RecentlyViewedScreen(onSelectRecipeForCooking: _launchCookingSession),
       ProfileScreen(appThemeMode: appThemeMode),
     ];
 
@@ -118,10 +124,10 @@ class _MainNavScreenState extends State<MainNavScreen> {
                     ),
                   ),
 
-                  // Tab 2: Explore / Recipes (4 Squares Grid)
+                  // Tab 2: Recently Viewed (Clock/History icon)
                   _buildNavButton(
                     index: 2,
-                    icon: Icons.grid_view_rounded,
+                    icon: Icons.history_rounded,
                     isActive: _currentTab == 2,
                   ),
 
