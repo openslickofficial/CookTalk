@@ -481,10 +481,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               height: 48,
                               child: ElevatedButton(
                                 onPressed: () {
-                                  // Start session with first available dish or null (LLM will ask)
-                                  widget.onSelectRecipeForCooking?.call(
-                                    _dishes.isNotEmpty ? _dishes.first : null,
-                                  );
+                                  // Start session with first available dish or open session
+                                  if (_dishes.isNotEmpty) {
+                                    widget.onSelectRecipeForCooking?.call(_dishes.first);
+                                  }
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: isDark
