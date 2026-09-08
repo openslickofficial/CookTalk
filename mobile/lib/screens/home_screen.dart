@@ -1437,8 +1437,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 errorMessage = null;
                               });
                               try {
-                                // Production token server on Cloudflare Pages
-                                final host = 'https://cooltalk.subhajitmandal42033.workers.dev';
+                                // Production token server on Render.com
+                                final host = 'https://cooltalk-token-server.onrender.com';
                                 final generated = await SupabaseService.instance.generateDishViaServer(dishName, host);
                                 if (!mounted || !sheetContext.mounted) return;
                                 Navigator.of(sheetContext).pop();

@@ -18,8 +18,8 @@ class _MainNavScreenState extends State<MainNavScreen> {
   int _currentTab = 0;
 
   void _launchCookingSession(Dish? dish) {
-    // Production token server on Cloudflare Pages
-    final host = 'https://cooltalk.subhajitmandal42033.workers.dev';
+    // Production token server on Render.com
+    final host = 'https://cooltalk-token-server.onrender.com';
     
     // If no dish is selected, create a generic session where LLM will ask for the dish
     final targetRecipe = dish != null

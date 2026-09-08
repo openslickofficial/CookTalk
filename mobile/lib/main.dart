@@ -248,8 +248,8 @@ class _PreSessionScreenState extends State<PreSessionScreen> {
   @override
   void initState() {
     super.initState();
-    // Production token server on Cloudflare Pages
-    final defaultHost = 'https://cooltalk.subhajitmandal42033.workers.dev';
+    // Production token server on Render.com
+    final defaultHost = 'https://cooltalk-token-server.onrender.com';
     _serverUrlController = TextEditingController(text: defaultHost);
     _loadRecipes();
   }
