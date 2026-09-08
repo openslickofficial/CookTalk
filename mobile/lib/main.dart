@@ -737,10 +737,15 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
         throw Exception('Microphone permission required for hands-free cooking co-pilot.');
       }
 
-      // 2. Fetch JWT room token
+      // 2. Fetch JWT room token (increased timeout for Render cold start)
       final roomName = 'cooktalk-mobile-${DateTime.now().millisecondsSinceEpoch % 100000}';
       final tokenUri = Uri.parse('${widget.serverUrl}/api/token?room=$roomName&name=MobileChef');
-      final res = await http.get(tokenUri).timeout(const Duration(seconds: 8));
+      
+      setState(() {
+        _statusLine = 'Waking up token server... (this may take 30-60s on first use)';
+      });
+      
+      final res = await http.get(tokenUri).timeout(const Duration(seconds: 60));
       if (res.statusCode != 200) {
         throw Exception('Token server HTTP ${res.statusCode}: ${res.body}');
       }
