@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/dish.dart';
 import '../models/user_profile.dart';
+import '../config/supabase_config.dart';
 
 class SupabaseService {
   static final SupabaseService instance = SupabaseService._internal();
@@ -56,14 +57,49 @@ class SupabaseService {
   }
 
   Future<void> initialize() async {
-    if (supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty) {
+    final url = SupabaseConfig.supabaseUrl;
+    final anonKey = SupabaseConfig.supabaseAnonKey;
+    if (url.isNotEmpty && anonKey.isNotEmpty) {
       try {
         await Supabase.initialize(
-          url: supabaseUrl,
-          publishableKey: supabaseAnonKey,
+          url: url,
+          publishableKey: anonKey,
         );
         _isSupabaseInitialized = true;
         debugPrint('[SupabaseService] Initialized live Supabase client.');
+
+        // Listen to auth state changes for OAuth redirect callbacks
+        Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+          final AuthChangeEvent event = data.event;
+          final Session? session = data.session;
+          if ((event == AuthChangeEvent.signedIn || event == AuthChangeEvent.tokenRefreshed) && session != null) {
+            final user = session.user;
+            final fullName = user.userMetadata?['full_name']?.toString() ??
+                user.userMetadata?['name']?.toString() ??
+                user.email?.split('@').first ??
+                'Samantha';
+            final rawAvatar = user.userMetadata?['avatar_url']?.toString() ??
+                user.userMetadata?['picture']?.toString();
+            final avatarUrl = (rawAvatar != null &&
+                    rawAvatar.isNotEmpty &&
+                    !rawAvatar.contains('photo-1534528741775-53994a69daeb'))
+                ? rawAvatar
+                : SupabaseConfig.getDiceBearAvatar(fullName);
+
+            final profile = UserProfile(
+              id: user.id,
+              email: user.email ?? 'user@cooktalk.app',
+              fullName: fullName,
+              avatarUrl: avatarUrl,
+              onboardingCompleted: _currentProfile?.onboardingCompleted ?? false,
+            );
+            await _saveLocalProfile(profile);
+            debugPrint('[SupabaseService] OAuth user signed in: ${profile.fullName}');
+          } else if (event == AuthChangeEvent.signedOut) {
+            _currentProfile = null;
+            authStateNotifier.value = null;
+          }
+        });
       } catch (e) {
         debugPrint('[SupabaseService] Live initialization failed: $e. Falling back to local mode.');
       }
@@ -116,38 +152,50 @@ class SupabaseService {
 
   bool get hasCompletedOnboarding => _currentProfile?.onboardingCompleted ?? false;
 
-  /// Password-less Authentication via Google OAuth
+  /// Social Authentication via Google OAuth with Supabase
   Future<UserProfile?> signInWithGoogle({bool isDemo = false}) async {
     if (_isSupabaseInitialized && !isDemo) {
       try {
         await Supabase.instance.client.auth.signInWithOAuth(
           OAuthProvider.google,
-          redirectTo: 'io.livekit.cooktalk://login-callback/',
+          redirectTo: SupabaseConfig.authRedirectUrl,
+          authScreenLaunchMode: LaunchMode.externalApplication,
         );
         final user = Supabase.instance.client.auth.currentUser;
         if (user != null) {
+          final fullName = user.userMetadata?['full_name']?.toString() ??
+              user.userMetadata?['name']?.toString() ??
+              'Samantha';
+          final rawAvatar = user.userMetadata?['avatar_url']?.toString() ??
+              user.userMetadata?['picture']?.toString();
+          final avatarUrl = (rawAvatar != null &&
+                  rawAvatar.isNotEmpty &&
+                  !rawAvatar.contains('photo-1534528741775-53994a69daeb'))
+              ? rawAvatar
+              : SupabaseConfig.getDiceBearAvatar(fullName);
+
           final profile = UserProfile(
             id: user.id,
-            email: user.email ?? 'samantha.cooks@gmail.com',
-            fullName: user.userMetadata?['full_name']?.toString() ?? 'Samantha',
-            avatarUrl: user.userMetadata?['avatar_url']?.toString() ??
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
+            email: user.email ?? 'user@cooktalk.app',
+            fullName: fullName,
+            avatarUrl: avatarUrl,
             onboardingCompleted: false,
           );
           await _saveLocalProfile(profile);
           return profile;
         }
+        return null;
       } catch (e) {
         debugPrint('[SupabaseService] Google sign in error: $e. Using demo mode.');
       }
     }
 
-    // Seamless Demo / Emulator Google Sign-In
+    // Seamless Demo / Fallback Google Sign-In with DiceBear avatar
     final profile = UserProfile(
       id: 'demo-samantha-101',
       email: 'samantha.cooks@gmail.com',
       fullName: 'Samantha',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
+      avatarUrl: SupabaseConfig.getDiceBearAvatar('Samantha'),
       favoriteCuisines: [],
       cookingFrequency: 'A few times a week',
       onboardingCompleted: false,
@@ -156,37 +204,14 @@ class SupabaseService {
     return profile;
   }
 
-  /// Password-less Authentication via Apple OAuth
-  Future<UserProfile?> signInWithApple({bool isDemo = false}) async {
-    if (_isSupabaseInitialized && !isDemo) {
-      try {
-        await Supabase.instance.client.auth.signInWithOAuth(
-          OAuthProvider.apple,
-          redirectTo: 'io.livekit.cooktalk://login-callback/',
-        );
-        final user = Supabase.instance.client.auth.currentUser;
-        if (user != null) {
-          final profile = UserProfile(
-            id: user.id,
-            email: user.email ?? 'samantha.apple@icloud.com',
-            fullName: user.userMetadata?['full_name']?.toString() ?? 'Samantha',
-            avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-            onboardingCompleted: false,
-          );
-          await _saveLocalProfile(profile);
-          return profile;
-        }
-      } catch (e) {
-        debugPrint('[SupabaseService] Apple sign in error: $e. Using demo mode.');
-      }
-    }
-
-    // Demo fallback for emulator
+  /// Dummy Apple Authentication (as requested: dummy for now)
+  Future<UserProfile?> signInWithApple({bool isDemo = true}) async {
+    // Keep Continue with Apple as dummy for now with DiceBear avatar
     final profile = UserProfile(
       id: 'demo-samantha-apple-101',
-      email: 'samantha.cooks@gmail.com',
+      email: 'samantha.apple@icloud.com',
       fullName: 'Samantha',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
+      avatarUrl: SupabaseConfig.getDiceBearAvatar('Samantha'),
       favoriteCuisines: [],
       cookingFrequency: 'A few times a week',
       onboardingCompleted: false,
@@ -342,6 +367,14 @@ class SupabaseService {
     final history = _cookHistoryByUser[_activeUserId];
     if (history == null) return false;
     return history.any((h) => h.dishId == dishId);
+  }
+
+  /// Get the timestamp of when this dish was last cooked
+  DateTime? getLastCookedAt(String dishId) {
+    final history = _cookHistoryByUser[_activeUserId];
+    if (history == null) return null;
+    final item = history.where((h) => h.dishId == dishId).firstOrNull;
+    return item?.lastCookedAt;
   }
 
   /// Record that the current user cooked this dish

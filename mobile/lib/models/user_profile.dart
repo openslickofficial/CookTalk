@@ -40,8 +40,15 @@ class UserProfile {
       id: json['id']?.toString() ?? '',
       email: json['email'] as String? ?? '',
       fullName: json['full_name'] as String? ?? 'Samantha',
-      avatarUrl: json['avatar_url'] as String? ??
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
+      avatarUrl: () {
+        final raw = json['avatar_url'] as String?;
+        if (raw != null && raw.isNotEmpty && !raw.contains('photo-1534528741775-53994a69daeb')) {
+          return raw;
+        }
+        final name = json['full_name'] as String? ?? 'Samantha';
+        final seed = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'U';
+        return 'https://api.dicebear.com/10.x/critters/svg?seed=$seed';
+      }(),
       favoriteCuisines: (json['favorite_cuisines'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??

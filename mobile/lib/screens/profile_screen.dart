@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/user_profile.dart';
 import '../services/supabase_service.dart';
+import '../widgets/user_avatar.dart';
 import 'auth_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_of_service_screen.dart';
@@ -670,20 +671,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Stack(
                       children: [
-                        Container(
-                          width: 68,
-                          height: 68,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
-                              width: 2,
-                            ),
-                            image: DecorationImage(
-                              image: NetworkImage(profile.avatarUrl),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
+                        UserAvatar(
+                          avatarUrl: profile.avatarUrl,
+                          username: profile.fullName,
+                          size: 68,
+                          borderColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                          borderWidth: 2,
                         ),
                         Positioned(
                           bottom: 0,

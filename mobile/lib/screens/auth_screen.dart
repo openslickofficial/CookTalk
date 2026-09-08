@@ -15,6 +15,33 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  @override
+  void initState() {
+    super.initState();
+    SupabaseService.instance.authStateNotifier.addListener(_onAuthStateChanged);
+  }
+
+  @override
+  void dispose() {
+    SupabaseService.instance.authStateNotifier.removeListener(_onAuthStateChanged);
+    super.dispose();
+  }
+
+  void _onAuthStateChanged() {
+    final profile = SupabaseService.instance.currentUser;
+    if (profile != null && mounted) {
+      if (!profile.onboardingCompleted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const PreferencesScreen()),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainNavScreen()),
+        );
+      }
+    }
+  }
+
   Future<void> _handleSignIn({required bool isApple}) async {
     setState(() {
       _isLoading = true;
@@ -249,17 +276,22 @@ class _AuthScreenState extends State<AuthScreen> {
                               : Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Container(
+                                    Image.asset(
+                                      'assets/google.png',
                                       width: 20,
                                       height: 20,
-                                      decoration: const BoxDecoration(shape: BoxShape.circle),
-                                      child: const Center(
-                                        child: Text(
-                                          'G',
-                                          style: TextStyle(
-                                            fontSize: 17,
-                                            fontWeight: FontWeight.w900,
-                                            color: Color(0xFF4285F4),
+                                      errorBuilder: (_, __, ___) => Container(
+                                        width: 20,
+                                        height: 20,
+                                        decoration: const BoxDecoration(shape: BoxShape.circle),
+                                        child: const Center(
+                                          child: Text(
+                                            'G',
+                                            style: TextStyle(
+                                              fontSize: 17,
+                                              fontWeight: FontWeight.w900,
+                                              color: Color(0xFF4285F4),
+                                            ),
                                           ),
                                         ),
                                       ),

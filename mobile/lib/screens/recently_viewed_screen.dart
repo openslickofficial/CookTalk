@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/dish.dart';
 import '../services/supabase_service.dart';
+import 'dish_history_detail_screen.dart';
 
 class RecentlyViewedScreen extends StatefulWidget {
   final Function(Dish dish)? onSelectRecipeForCooking;
@@ -51,7 +52,7 @@ class _RecentlyViewedScreenState extends State<RecentlyViewedScreen> {
       backgroundColor: isDark ? const Color(0xFF0D0F12) : const Color(0xFFF9FAF7),
       appBar: AppBar(
         title: Text(
-          'Recently Viewed',
+          'History',
           style: TextStyle(
             fontWeight: FontWeight.w900,
             fontSize: 22,
@@ -162,7 +163,16 @@ class _RecentlyViewedScreenState extends State<RecentlyViewedScreen> {
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          onTap: () => widget.onSelectRecipeForCooking?.call(dish),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => DishHistoryDetailScreen(
+                  dish: dish,
+                  onSelectRecipeForCooking: widget.onSelectRecipeForCooking,
+                ),
+              ),
+            );
+          },
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -200,47 +210,19 @@ class _RecentlyViewedScreenState extends State<RecentlyViewedScreen> {
                         spacing: 6,
                         runSpacing: 4,
                         children: [
-                          // Trust badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                            decoration: BoxDecoration(
-                              color: dish.verified
-                                  ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                  : const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: dish.verified
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFFF59E0B),
-                                width: 0.8,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  dish.verified
-                                      ? Icons.verified_rounded
-                                      : Icons.auto_awesome_rounded,
-                                  size: 11,
-                                  color: dish.verified
-                                      ? const Color(0xFF10B981)
-                                      : const Color(0xFFF59E0B),
+                          // Trust badge (only if verified)
+                          if (dish.verified)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: const Color(0xFF10B981),
+                                  width: 0.8,
                                 ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  dish.verified ? 'Verified' : 'AI-suggested, unverified',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: dish.verified
-                                        ? const Color(0xFF10B981)
-                                        : const Color(0xFFF59E0B),
-                                  ),
-                                ),
-                              ],
+                              )
                             ),
-                          ),
 
                           // Cooked before badge
                           if (hasCooked)

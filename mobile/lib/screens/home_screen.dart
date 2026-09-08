@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/dish.dart';
 import '../services/supabase_service.dart';
+import '../widgets/user_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(Dish dish)? onSelectRecipeForCooking;
@@ -226,23 +227,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                 child: Row(
                   children: [
-                    // User Avatar Circle
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDark ? Colors.white24 : const Color(0xFFE2E8F0),
-                          width: 1.5,
-                        ),
-                        image: const DecorationImage(
-                          image: NetworkImage(
-                            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-                          ),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
+                    // User Avatar with DiceBear SVG support
+                    UserAvatar(
+                      avatarUrl: user?.avatarUrl,
+                      username: userName,
+                      size: 44,
                     ),
                     const SizedBox(width: 12),
 
@@ -575,94 +564,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              const SizedBox(height: 22),
+              const SizedBox(height: 12),
 
-              // 4. CATEGORIES GRID: 2 rows of 4 cards matching the reference image
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                    childAspectRatio: 0.88,
-                  ),
-                  itemCount: _categories.length,
-                  itemBuilder: (context, index) {
-                    final cat = _categories[index];
-                    final isMore = cat['isMore'] as bool;
-                    final isSelected = _selectedCategory == cat['id'];
-
-                    // Mint Lime accent for "More" button in unified 2-color brand theme
-                    final cardBg = isMore
-                        ? const Color(0xFFD2E68B)
-                        : (isDark ? const Color(0xFF161A24) : Colors.white);
-
-                    final textColor = isMore
-                        ? const Color(0xFF143826)
-                        : (isDark ? Colors.white70 : const Color(0xFF4A5568));
-
-                    final iconColor = isMore
-                        ? const Color(0xFF143826)
-                        : (cat['iconColor'] as Color);
-
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _selectedCategory =
-                              _selectedCategory == cat['id'] ? 'all' : cat['id'] as String;
-                        });
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: cardBg,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected || isMore
-                                ? const Color(0xFFD2E68B)
-                                : (isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8)),
-                            width: isSelected || isMore ? 1.5 : 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: isMore
-                                  ? const Color(0xFFD2E68B).withValues(alpha: 0.3)
-                                  : Colors.black.withValues(alpha: 0.02),
-                              blurRadius: isMore ? 8 : 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              cat['icon'] as IconData,
-                              size: 26,
-                              color: iconColor,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              cat['label'] as String,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: isMore ? FontWeight.w800 : FontWeight.w600,
-                                color: textColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              // 5. SECTION: "Recently Viewed in AI" (Replaces Trending Recipes Carousel)
+              // 4. SECTION: "Cooking History"
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
@@ -672,7 +576,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Recently Viewed',
+                          'Cooking History',
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
@@ -692,7 +596,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Recipes you recently explored with your voice sous-chef',
+                      'Recipes you cooked or explored with your voice sous-chef',
                       style: TextStyle(
                         fontSize: 12.5,
                         color: isDark ? Colors.white60 : const Color(0xFF64748B),
@@ -854,46 +758,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                     spacing: 6,
                                     runSpacing: 4,
                                     children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: dish.verified
-                                              ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                              : const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                                          borderRadius: BorderRadius.circular(5),
-                                          border: Border.all(
-                                            color: dish.verified
-                                                ? const Color(0xFF10B981)
-                                                : const Color(0xFFF59E0B),
-                                            width: 0.8,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              dish.verified
-                                                  ? Icons.verified_rounded
-                                                  : Icons.auto_awesome_rounded,
-                                              size: 10,
-                                              color: dish.verified
-                                                  ? const Color(0xFF10B981)
-                                                  : const Color(0xFFF59E0B),
-                                            ),
-                                            const SizedBox(width: 3),
-                                            Text(
-                                              dish.verified ? 'Verified' : 'AI-suggested',
-                                              style: TextStyle(
-                                                fontSize: 9.5,
-                                                fontWeight: FontWeight.w700,
-                                                color: dish.verified
-                                                    ? const Color(0xFF10B981)
-                                                    : const Color(0xFFF59E0B),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
                                       if (SupabaseService.instance.hasCookedBefore(dish.id) ||
                                           SupabaseService.instance.hasCookedBefore(dish.slug))
                                         Container(
@@ -1004,46 +868,37 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: dish.verified
-                                ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                : const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: dish.verified
-                                  ? const Color(0xFF10B981)
-                                  : const Color(0xFFF59E0B),
-                              width: 0.8,
+                        if (dish.verified)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: const Color(0xFF10B981),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.verified_rounded,
+                                  size: 12,
+                                  color: Color(0xFF10B981),
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Verified',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF10B981),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                dish.verified
-                                    ? Icons.verified_rounded
-                                    : Icons.auto_awesome_rounded,
-                                size: 12,
-                                color: dish.verified
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFFF59E0B),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                dish.verified ? 'Verified' : 'AI-suggested, unverified',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: dish.verified
-                                      ? const Color(0xFF10B981)
-                                      : const Color(0xFFF59E0B),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                         if (SupabaseService.instance.hasCookedBefore(dish.id) ||
                             SupabaseService.instance.hasCookedBefore(dish.slug)) ...[
                           const SizedBox(width: 8),
@@ -1233,19 +1088,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                     decoration: BoxDecoration(
                                       color: dish.verified
                                           ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                          : const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                          : Colors.transparent,
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: Text(
-                                      dish.verified ? 'Verified' : 'AI-suggested',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: dish.verified
-                                            ? const Color(0xFF10B981)
-                                            : const Color(0xFFF59E0B),
-                                      ),
-                                    ),
+                                    child: dish.verified
+                                        ? const Text(
+                                            'Verified',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF10B981),
+                                            ),
+                                          )
+                                        : const SizedBox.shrink(),
                                   ),
                                   if (hasCooked) ...[
                                     const SizedBox(width: 6),

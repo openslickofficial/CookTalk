@@ -104,7 +104,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
                     isActive: _currentTab == 1,
                   ),
 
-                  // Center Action: Voice Cooking (+)
+                  // Center Action: Voice Cooking (Mic)
                   GestureDetector(
                     onTap: () => _launchCookingSession(null),
                     child: Container(
@@ -116,7 +116,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
                       ),
                       child: const Center(
                         child: Icon(
-                          Icons.add_rounded,
+                          Icons.mic_rounded,
                           color: Colors.white,
                           size: 24,
                         ),
