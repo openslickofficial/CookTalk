@@ -6,6 +6,24 @@ CookTalk eliminates the awkward pause in voice AI by orchestrating an ultra-low-
 
 ---
 
+## 🚀 Quick Deploy (100% FREE)
+
+Deploy the entire CookTalk project for **$0**:
+
+- **Agent Worker**: LiveKit Cloud (1,000 min/month free)
+- **Web Frontend**: Cloudflare Pages (unlimited bandwidth)
+- **Token Server**: Cloudflare Pages Functions (100k requests/day)
+- **Database**: Supabase (already deployed)
+- **Mobile App**: Direct APK distribution (Android)
+
+**Quick Start**: See **[FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md)** for complete step-by-step guide.
+
+**Architecture**: See **[DEPLOYMENT_ARCHITECTURE.md](DEPLOYMENT_ARCHITECTURE.md)** for detailed component breakdown.
+
+**Total Time**: ~65 minutes | **Total Cost**: $0 ✅
+
+---
+
 ## 1. System Architecture
 
 ```text
