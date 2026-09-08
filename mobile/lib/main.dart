@@ -248,7 +248,8 @@ class _PreSessionScreenState extends State<PreSessionScreen> {
   @override
   void initState() {
     super.initState();
-    final defaultHost = Platform.isAndroid ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+    // Production token server on Cloudflare Pages
+    final defaultHost = 'https://cooltalk.subhajitmandal42033.workers.dev';
     _serverUrlController = TextEditingController(text: defaultHost);
     _loadRecipes();
   }

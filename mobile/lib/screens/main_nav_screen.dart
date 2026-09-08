@@ -18,7 +18,8 @@ class _MainNavScreenState extends State<MainNavScreen> {
   int _currentTab = 0;
 
   void _launchCookingSession(Dish? dish) {
-    final host = Platform.isAndroid ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+    // Production token server on Cloudflare Pages
+    final host = 'https://cooltalk.subhajitmandal42033.workers.dev';
     
     // If no dish is selected, create a generic session where LLM will ask for the dish
     final targetRecipe = dish != null
