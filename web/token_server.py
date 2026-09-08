@@ -10,7 +10,7 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
-from livekit import api
+from livekit.api import AccessToken, VideoGrants
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT_DIR / ".env")
@@ -133,10 +133,10 @@ def create_token(
     room_name = room.strip() or "cooktalk-kitchen"
 
     token = (
-        api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
         .with_identity(user_id)
         .with_name(name)
-        .with_grants(api.VideoGrants(room_join=True, room=room_name, can_publish=True, can_subscribe=True))
+        .with_grants(VideoGrants(room_join=True, room=room_name, can_publish=True, can_subscribe=True))
         .to_jwt()
     )
 
