@@ -8,8 +8,6 @@ class SupportScreen extends StatefulWidget {
 }
 
 class _SupportScreenState extends State<SupportScreen> {
-  final _searchController = TextEditingController();
-  String _searchQuery = '';
   final Set<int> _expandedIndices = {1}; // Default item 1 open as in reference mockup
 
   final List<Map<String, String>> _allFaqs = [
@@ -46,13 +44,7 @@ class _SupportScreenState extends State<SupportScreen> {
   ];
 
   List<Map<String, String>> get _filteredFaqs {
-    if (_searchQuery.trim().isEmpty) return _allFaqs;
-    final q = _searchQuery.toLowerCase();
-    return _allFaqs
-        .where((f) =>
-            f['question']!.toLowerCase().contains(q) ||
-            f['answer']!.toLowerCase().contains(q))
-        .toList();
+    return _allFaqs;
   }
 
   void _openContactSupportModal() {
@@ -163,14 +155,14 @@ class _SupportScreenState extends State<SupportScreen> {
     );
   }
 
-  void _openLiveChatModal() {
+  void _openCallNowModal() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: const [
-            Icon(Icons.chat_bubble_outline_rounded, color: Colors.white, size: 20),
+            Icon(Icons.phone, color: Colors.white, size: 20),
             SizedBox(width: 10),
-            Expanded(child: Text('Live Chef Concierge connecting... (Queue position: 1)')),
+            Expanded(child: Text('Connecting to CookTalk Support: +1 (800) 555-COOK')),
           ],
         ),
         backgroundColor: const Color(0xFF10B981),
@@ -178,12 +170,6 @@ class _SupportScreenState extends State<SupportScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   @override
@@ -240,63 +226,7 @@ class _SupportScreenState extends State<SupportScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Search Bar matching reference UI
-            Container(
-              height: 50,
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF161A24) : Colors.white,
-                borderRadius: BorderRadius.circular(25),
-                border: Border.all(
-                  color: isDark ? const Color(0xFF2E384D) : const Color(0xFFE2E8F0),
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.search_rounded,
-                    color: metaTextColor,
-                    size: 22,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: primaryTextColor,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Search topic or question...',
-                        hintStyle: TextStyle(
-                          fontSize: 14,
-                          color: metaTextColor,
-                          fontWeight: FontWeight.w400,
-                        ),
-                        border: InputBorder.none,
-                        isDense: true,
-                      ),
-                      onChanged: (val) => setState(() => _searchQuery = val),
-                    ),
-                  ),
-                  if (_searchQuery.isNotEmpty)
-                    GestureDetector(
-                      onTap: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      },
-                      child: Icon(
-                        Icons.close_rounded,
-                        color: metaTextColor,
-                        size: 18,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Two Action Buttons: Email Support & Live Chat
+            // Two Action Buttons: Email Support & Call Now
             Row(
               children: [
                 Expanded(
@@ -336,7 +266,7 @@ class _SupportScreenState extends State<SupportScreen> {
                 const SizedBox(width: 14),
                 Expanded(
                   child: GestureDetector(
-                    onTap: _openLiveChatModal,
+                    onTap: _openCallNowModal,
                     child: Container(
                       height: 44,
                       decoration: BoxDecoration(
@@ -350,13 +280,13 @@ class _SupportScreenState extends State<SupportScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.chat_bubble_outline_rounded,
+                            Icons.phone_outlined,
                             color: accentLime,
                             size: 18,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Live Chat',
+                            'Call Now',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,

@@ -2,7 +2,7 @@
 CookTalk Phase 2 — LiveKit Streaming Voice Agent
 Pipeline:
   - STT: Deepgram (nova-3 streaming)
-  - LLM: Groq via OpenAI-compatible plugin (groq/compound-mini, streaming)
+  - LLM: Groq via OpenAI-compatible plugin (qwen/qwen3.8-27b, streaming)
   - TTS: Rime via WebSocket streaming (/ws3, model: coda, speaker: astra)
   - VAD: Silero ONNX turn detection
   - Orchestrator: LiveKit Agents 1.x AgentSession
@@ -294,7 +294,9 @@ class CookingCoPilot:
         self.session: AgentSession | None = None
         self.room: rtc.Room | None = None
         self.active_timers: dict[str, asyncio.Task] = {}
+        self.active_timer_metadata: dict[str, dict] = {}
         self.has_explicit_recipe = False
+        self._timer_alert_lock = asyncio.Lock()
 
     def set_session(self, session: AgentSession) -> None:
         self.session = session
@@ -504,12 +506,19 @@ class CookingCoPilot:
             secs = max(1, int(duration_seconds))
             clean_label = label.strip() or "cooking step"
 
+            expires = time.time() + secs
+            copilot.active_timer_metadata[clean_label] = {
+                "label": clean_label,
+                "duration_seconds": secs,
+                "expires_at": expires,
+            }
+
             # Broadcast timer start immediately to UI
             await copilot.broadcast({
                 "type": "timer_started",
                 "label": clean_label,
                 "duration_seconds": secs,
-                "expires_at": time.time() + secs,
+                "expires_at": expires,
             })
 
             async def timer_task():
@@ -521,17 +530,20 @@ class CookingCoPilot:
                         "label": clean_label,
                     })
                     if copilot.session:
-                        await copilot.session.say(
-                            f"Ding ding! Your timer for {clean_label} is done.",
-                            allow_interruptions=True,
-                            add_to_chat_ctx=True,
-                        )
+                        async with copilot._timer_alert_lock:
+                            await copilot.session.say(
+                                f"Ding ding! Your timer for {clean_label} is done.",
+                                allow_interruptions=True,
+                                add_to_chat_ctx=True,
+                            )
+                            await asyncio.sleep(0.4)
                 except asyncio.CancelledError:
                     logger.info(f"[TIMER CANCELLED] Timer '{clean_label}' was cancelled.")
                 except Exception as e:
                     logger.error(f"[TIMER ERROR] Failed to announce timer alert: {e}")
                 finally:
                     copilot.active_timers.pop(clean_label, None)
+                    copilot.active_timer_metadata.pop(clean_label, None)
 
             t = asyncio.create_task(timer_task())
             copilot.active_timers[clean_label] = t
@@ -561,6 +573,7 @@ class CookingCoPilot:
 
             if target_label and target_label in copilot.active_timers:
                 task = copilot.active_timers.pop(target_label)
+                copilot.active_timer_metadata.pop(target_label, None)
                 task.cancel()
                 logger.info(f"[TIMER CANCELLED] Manually cancelled timer for '{target_label}'.")
                 await copilot.broadcast({
@@ -569,6 +582,7 @@ class CookingCoPilot:
                 })
                 return f"Cancelled the timer for {target_label}."
             elif target_label:
+                copilot.active_timer_metadata.pop(target_label, None)
                 await copilot.broadcast({
                     "type": "timer_cancelled",
                     "label": target_label,
@@ -1221,11 +1235,40 @@ async def entrypoint(ctx: JobContext):
                 lbl = payload.get("label")
                 if lbl and lbl in copilot.active_timers:
                     t = copilot.active_timers.pop(lbl)
+                    copilot.active_timer_metadata.pop(lbl, None)
                     t.cancel()
                     asyncio.create_task(copilot.broadcast({
                         "type": "timer_cancelled",
                         "label": lbl,
                     }))
+            elif msg_type == "sync_recipe_state":
+                recipe = copilot.active_recipe
+                recipe_steps = recipe.get("steps", [])
+                curr_idx = copilot.current_step_index
+                curr_instruction = ""
+                if recipe_steps and 1 <= curr_idx <= len(recipe_steps):
+                    curr_instruction = recipe_steps[curr_idx - 1].get("instruction", "")
+
+                logger.info(f"[DATA SYNC REQUEST] Resending recipe state and timers for {copilot.active_recipe_id} step {curr_idx}")
+                asyncio.create_task(copilot.broadcast({
+                    "type": "recipe_state",
+                    "recipe_id": copilot.active_recipe_id,
+                    "recipe_name": recipe.get("name", copilot.active_recipe_id),
+                    "current_step": curr_idx,
+                    "total_steps": len(recipe_steps),
+                    "instruction": curr_instruction,
+                }))
+
+                now = time.time()
+                for lbl, meta in list(copilot.active_timer_metadata.items()):
+                    rem = int(meta["expires_at"] - now)
+                    if rem > 0:
+                        asyncio.create_task(copilot.broadcast({
+                            "type": "timer_started",
+                            "label": lbl,
+                            "duration_seconds": rem,
+                            "expires_at": meta["expires_at"],
+                        }))
             elif msg_type == "user_text":
                 text = payload.get("text", "").strip()
                 if text:

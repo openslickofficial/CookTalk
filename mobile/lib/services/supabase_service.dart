@@ -502,6 +502,18 @@ class SupabaseService {
     return all.where((d) => d.isTrending).toList();
   }
 
+  String? getDishImageUrl(String recipeId) {
+    try {
+      final clean = recipeId.toLowerCase().replaceAll('-', '_').trim();
+      final match = _seedDishes.firstWhere(
+        (d) => d.id.toLowerCase() == clean || d.slug.toLowerCase() == clean || d.title.toLowerCase().contains(clean),
+      );
+      return match.imageUrl;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Curated Seed Data: ONLY the original 3 hand-authored recipes have verified: true
   static final List<Dish> _seedDishes = [
     // --- 1. ORIGINAL HAND-AUTHORED BENCHMARK RECIPE 1 ---

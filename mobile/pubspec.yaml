@@ -41,6 +41,7 @@ dependencies:
   shared_preferences: ^2.5.5
   google_fonts: ^8.2.1
   flutter_svg: ^2.3.0
+  wakelock_plus: ^1.2.8
 
 dev_dependencies:
   flutter_test:
@@ -52,6 +53,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.2
+  flutter_native_splash: ^2.4.3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -94,3 +97,45 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/app_icon.png"
+  # Optionally customize per platform:
+  # android: "launcher_icon"
+  # ios: true
+  # image_path_android: "assets/icon_android.png"
+  # image_path_ios: "assets/icon_ios.png"
+  # adaptive_icon_background: "#ffffff"
+  # adaptive_icon_foreground: "assets/icon_foreground.png"
+
+flutter_native_splash:
+  # Light mode settings
+  color: "#FFFFFF"
+  image: assets/splash.png
+  
+  # Dark mode settings
+  color_dark: "#000000"
+  image_dark: assets/splash_dark.png
+  
+  # Android specific settings
+  android: true
+  android_gravity: center
+  
+  # Android 12+ settings
+  android_12:
+    image: assets/splash.png
+    icon_background_color: "#FFFFFF"
+    image_dark: assets/splash_dark.png
+    icon_background_color_dark: "#000000"
+    
+  # iOS specific settings
+  ios: true
+  ios_content_mode: center
+  
+  # Web specific settings
+  web: false
+  
+  # fullscreen false ensures image is contained
+  fullscreen: false

@@ -7,6 +7,7 @@ import 'privacy_policy_screen.dart';
 import 'terms_of_service_screen.dart';
 import 'support_screen.dart';
 import 'account_deletion_screen.dart';
+import 'about_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ValueNotifier<ThemeMode> appThemeMode;
@@ -394,7 +395,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 18),
               Text(
-                'Rime Voice Character',
+                'Voice Character',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
@@ -632,7 +633,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: isDark ? const Color(0xFF0D0F12) : const Color(0xFFF9FAF7),
       appBar: AppBar(
         title: Text(
-          'Chef Profile',
+          'Your Profile',
           style: TextStyle(
             fontWeight: FontWeight.w900,
             fontSize: 22,
@@ -1103,6 +1104,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const TermsOfServiceScreen()),
+                  );
+                },
+              ),
+              _buildDivider(isDark),
+
+              // About CookTalk
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+                leading: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
+                        .withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.info_outline_rounded,
+                    color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                    size: 20,
+                  ),
+                ),
+                title: Text(
+                  'About CookTalk',
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF1E293B),
+                  ),
+                ),
+                subtitle: Text(
+                  'App version, features, and company info',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AboutScreen()),
                   );
                 },
               ),

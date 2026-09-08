@@ -42,7 +42,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       backgroundColor: isDark ? const Color(0xFF0D0F12) : const Color(0xFFF9FAF7),
       appBar: AppBar(
         title: Text(
-          'Saved Recipes',
+          'Recipes You Liked',
           style: TextStyle(
             fontWeight: FontWeight.w900,
             fontSize: 22,
@@ -67,7 +67,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'No saved recipes yet',
+                        'No recipes liked yet',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/dish.dart';
 import '../services/supabase_service.dart';
 import '../widgets/user_avatar.dart';
+import 'recently_viewed_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(Dish dish)? onSelectRecipeForCooking;
@@ -55,6 +56,17 @@ class _HomeScreenState extends State<HomeScreen> {
         _staticDishNames = staticNames;
         _isLoading = false;
       });
+    }
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return 'Good Morning,';
+    } else if (hour < 17) {
+      return 'Good Afternoon,';
+    } else {
+      return 'Good Evening,';
     }
   }
 
@@ -222,7 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. TOP BAR: Avatar, Name & Notification Bell
+              // 1. TOP BAR: Avatar & Greeting with Name
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                 child: Row(
@@ -235,68 +247,40 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(width: 12),
 
-                    // User Name
-                    Text(
-                      userName,
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : const Color(0xFF2C3E2D),
-                      ),
-                    ),
-
-                    const Spacer(),
-
-                    // Notification Bell in rounded container
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1A1F29) : Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDark ? const Color(0xFF2B3545) : const Color(0xFFECEFE8),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Icon(
-                            Icons.notifications_none_rounded,
-                            color: isDark ? Colors.white70 : const Color(0xFF333333),
-                            size: 22,
-                          ),
-                          Positioned(
-                            top: 11,
-                            right: 12,
-                            child: Container(
-                              width: 7,
-                              height: 7,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFD2E68B),
-                                shape: BoxShape.circle,
+                    // Greeting & User Name (single line)
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${_getGreeting()} ',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w500,
+                                color: isDark ? Colors.white60 : const Color(0xFF64748B),
                               ),
                             ),
-                          ),
-                        ],
+                            TextSpan(
+                              text: userName,
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? Colors.white : const Color(0xFF2C3E2D),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
 
-              // 2. HERO HEADLINE: "What's cooking today?"
+              // 2. HERO HEADLINE
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
                 child: Text(
-                  "What's cooking today?",
+                  "What would you like\nto cook today?",
                   style: TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.w900,
@@ -497,24 +481,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               height: 48,
                               child: ElevatedButton(
                                 onPressed: () {
+                                  // Start session with first available dish or null (LLM will ask)
                                   widget.onSelectRecipeForCooking?.call(
-                                    _dishes.isNotEmpty
-                                        ? _dishes.first
-                                        : const Dish(
-                                            id: 'pancakes',
-                                            slug: 'pancakes',
-                                            title: 'Golden Diner-Style Fluffy Buttermilk Pancakes',
-                                            description: 'Classic diner-style pancakes with crispy edges and soft centers.',
-                                            cuisine: 'American',
-                                            category: 'Breakfast',
-                                            difficulty: 'Easy',
-                                            prepTimeMinutes: 10,
-                                            cookTimeMinutes: 15,
-                                            servings: 4,
-                                            imageUrl: 'https://images.unsplash.com/photo-1528207776546-365bb710ee93?auto=format&fit=crop&w=800&q=80',
-                                            ingredients: [],
-                                            steps: [],
-                                          ),
+                                    _dishes.isNotEmpty ? _dishes.first : null,
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
@@ -584,12 +553,23 @@ class _HomeScreenState extends State<HomeScreen> {
                             letterSpacing: -0.4,
                           ),
                         ),
-                        Text(
-                          'See all',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => RecentlyViewedScreen(
+                                  onSelectRecipeForCooking: widget.onSelectRecipeForCooking,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Text(
+                            'See all',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                            ),
                           ),
                         ),
                       ],

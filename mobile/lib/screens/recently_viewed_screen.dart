@@ -221,7 +221,26 @@ class _RecentlyViewedScreenState extends State<RecentlyViewedScreen> {
                                   color: const Color(0xFF10B981),
                                   width: 0.8,
                                 ),
-                              )
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.verified_rounded,
+                                    size: 11,
+                                    color: const Color(0xFF10B981),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    'Verified',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF10B981),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
 
                           // Cooked before badge

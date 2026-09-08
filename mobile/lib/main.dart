@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'services/supabase_service.dart';
 import 'models/user_profile.dart';
 import 'screens/onboarding_screen.dart';
@@ -160,6 +161,7 @@ class RecipeItem {
   final int totalSteps;
   final bool verified;
   final String source;
+  final String? imageUrl;
   final List<Map<String, dynamic>> steps;
   final List<Map<String, dynamic>> ingredients;
 
@@ -170,6 +172,7 @@ class RecipeItem {
     required this.totalSteps,
     this.verified = false,
     this.source = 'ai_generated',
+    this.imageUrl,
     this.steps = const [],
     this.ingredients = const [],
   });
@@ -180,6 +183,7 @@ class RecipeItem {
     final rawIngredients = json['ingredients'] as List<dynamic>? ?? [];
     final ingredientsList = rawIngredients.map((e) => e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{}).toList();
     final isBenchmark = {'scrambled_eggs', 'cacio_e_pepe', 'ribeye_steak'}.contains(id);
+    final rawImageUrl = json['image_url'] as String? ?? json['imageUrl'] as String?;
     return RecipeItem(
       id: id,
       name: json['name'] as String? ?? id,
@@ -187,6 +191,7 @@ class RecipeItem {
       totalSteps: stepsList.length,
       verified: (json['verified'] as bool?) ?? isBenchmark,
       source: (json['source'] as String?) ?? (isBenchmark ? 'curated' : 'ai_generated'),
+      imageUrl: rawImageUrl,
       steps: stepsList,
       ingredients: ingredientsList,
     );
@@ -657,9 +662,25 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
   int? _lastTtsTtfbMs;
   int? _lastE2eLatencyMs;
 
+  // Screen wakelock state (Task 1)
+  bool _wakelockEnabled = true;
+
+  // Reconnection state (Task 2)
+  bool _isReconnecting = false;
+  bool _reconnectFailed = false;
+  Timer? _reconnectTimeoutTimer;
+
+  // Demo mode overlay toggle for latency stats (Task 4)
+  bool _showLatencyDemo = false;
+
   @override
   void initState() {
     super.initState();
+    try {
+      WakelockPlus.enable();
+    } catch (e) {
+      debugPrint('[Wakelock] Enable error: $e');
+    }
     _recipeName = widget.initialRecipe.name;
     _totalSteps = widget.initialRecipe.totalSteps > 0 ? widget.initialRecipe.totalSteps : 5;
     if (widget.initialRecipe.steps.isNotEmpty) {
@@ -683,6 +704,12 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
 
   @override
   void dispose() {
+    _reconnectTimeoutTimer?.cancel();
+    try {
+      WakelockPlus.disable();
+    } catch (e) {
+      debugPrint('[Wakelock] Disable error: $e');
+    }
     _waveAnimController?.dispose();
     _countdownTicker?.cancel();
     _cleanupRoom();
@@ -782,14 +809,75 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
     }
   }
 
+  Future<void> _manualRetryReconnect() async {
+    setState(() {
+      _isReconnecting = true;
+      _reconnectFailed = false;
+      _statusLine = 'Retrying connection to kitchen room...';
+    });
+    try {
+      await _cleanupRoom();
+      await _startLiveKitSession();
+      if (mounted) {
+        setState(() {
+          _isReconnecting = false;
+          _reconnectFailed = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isReconnecting = true;
+          _reconnectFailed = true;
+          _statusLine = 'Retry failed: $e';
+        });
+      }
+    }
+  }
+
   void _attachLiveKitListeners(EventsListener<RoomEvent> listener) {
     listener
       ..on<RoomDisconnectedEvent>((_) {
         if (!mounted) return;
+        _reconnectTimeoutTimer?.cancel();
         setState(() {
           _voiceState = AgentVoiceState.error;
           _statusLine = 'Disconnected from session';
         });
+      })
+      ..on<RoomReconnectingEvent>((_) {
+        if (!mounted) return;
+        setState(() {
+          _isReconnecting = true;
+          _reconnectFailed = false;
+          _statusLine = 'Connection lost. Reconnecting to kitchen co-pilot...';
+        });
+        _reconnectTimeoutTimer?.cancel();
+        _reconnectTimeoutTimer = Timer(const Duration(seconds: 15), () {
+          if (mounted && _isReconnecting) {
+            setState(() {
+              _reconnectFailed = true;
+              _statusLine = 'Reconnection timed out. Tap Retry or restart.';
+            });
+          }
+        });
+      })
+      ..on<RoomReconnectedEvent>((_) async {
+        if (!mounted) return;
+        _reconnectTimeoutTimer?.cancel();
+        setState(() {
+          _isReconnecting = false;
+          _reconnectFailed = false;
+          _voiceState = AgentVoiceState.listening;
+          _statusLine = 'Reconnected! Cooking session resumed.';
+        });
+        // Request immediate culinary state resync from agent
+        try {
+          final syncPacket = utf8.encode(jsonEncode({'type': 'sync_recipe_state'}));
+          await _room?.localParticipant?.publishData(syncPacket);
+        } catch (e) {
+          debugPrint('[InSession] Resync publish error: $e');
+        }
       })
       ..on<ActiveSpeakersChangedEvent>((event) {
         if (!mounted) return;
@@ -802,7 +890,7 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
             _voiceState = AgentVoiceState.speaking;
             _statusLine = 'Chef CookTalk is speaking...';
           } else {
-            if (_voiceState != AgentVoiceState.error && _voiceState != AgentVoiceState.connecting) {
+            if (_voiceState != AgentVoiceState.error && _voiceState != AgentVoiceState.connecting && !_isReconnecting) {
               _voiceState = AgentVoiceState.listening;
               _statusLine = 'Listening hands-free • Say "Next step" or ask anything';
             }
@@ -1048,9 +1136,137 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                 color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
               ),
             ),
+            const SizedBox(height: 16),
+
+            // Action Buttons: End Session, Screen Wake, Latency
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // End Session Button
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.redAccent.withValues(alpha: 0.15),
+                  ),
+                  child: IconButton(
+                    tooltip: 'End session',
+                    icon: const Icon(Icons.call_end_rounded, color: Colors.redAccent, size: 20),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                // Screen Wake Lock Toggle
+                IconButton(
+                  tooltip: _wakelockEnabled
+                      ? 'Screen keep-awake ON (Tap to allow sleep)'
+                      : 'Screen keep-awake OFF (Tap to keep awake)',
+                  icon: Icon(
+                    _wakelockEnabled ? Icons.wb_sunny_rounded : Icons.wb_sunny_outlined,
+                    color: _wakelockEnabled ? CookTalkTheme.primaryAccent : Colors.grey,
+                    size: 22,
+                  ),
+                  onPressed: () async {
+                    final next = !_wakelockEnabled;
+                    try {
+                      if (next) {
+                        await WakelockPlus.enable();
+                      } else {
+                        await WakelockPlus.disable();
+                      }
+                    } catch (e) {
+                      debugPrint('[Wakelock] Toggle error: $e');
+                    }
+                    if (mounted) setState(() => _wakelockEnabled = next);
+                  },
+                ),
+                const SizedBox(width: 16),
+
+                // Latency Demo Toggle
+                IconButton(
+                  tooltip: _showLatencyDemo ? 'Hide latency demo stats' : 'Show latency demo stats',
+                  icon: Icon(
+                    _showLatencyDemo ? Icons.speed_rounded : Icons.speed_outlined,
+                    color: _showLatencyDemo ? CookTalkTheme.speakingAccent : Colors.grey,
+                    size: 22,
+                  ),
+                  onPressed: () {
+                    setState(() => _showLatencyDemo = !_showLatencyDemo);
+                  },
+                ),
+              ],
+            ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildDishThumbnail(bool isDark) {
+    final curatedImg = widget.initialRecipe.imageUrl ??
+        SupabaseService.instance.getDishImageUrl(widget.initialRecipe.id);
+    final isCuratedOrVerified = widget.initialRecipe.verified || curatedImg != null;
+
+    if (isCuratedOrVerified && curatedImg != null && curatedImg.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.network(
+          curatedImg,
+          width: 40,
+          height: 40,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholderThumbnail(isDark, false),
+        ),
+      );
+    }
+
+    return _buildPlaceholderThumbnail(isDark, !widget.initialRecipe.verified);
+  }
+
+  Widget _buildPlaceholderThumbnail(bool isDark, bool isAiGenerated) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: isDark ? const Color(0xFF263042) : const Color(0xFFE9EDDF),
+        border: Border.all(
+          color: isAiGenerated
+              ? Colors.amber.shade700.withValues(alpha: 0.6)
+              : CookTalkTheme.primaryAccent.withValues(alpha: 0.6),
+          width: 1.2,
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            Icons.restaurant_menu_rounded,
+            size: 20,
+            color: isDark ? Colors.white70 : CookTalkTheme.forestGreen,
+          ),
+          if (isAiGenerated)
+            Positioned(
+              right: 2,
+              bottom: 2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 0.5),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade800,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: const Text(
+                  'AI',
+                  style: TextStyle(
+                    fontSize: 7.5,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1075,22 +1291,6 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
             fontSize: 18,
           ),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.redAccent.withValues(alpha: 0.15),
-              ),
-              child: IconButton(
-                tooltip: 'End session',
-                icon: const Icon(Icons.call_end_rounded, color: Colors.redAccent, size: 20),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -1102,7 +1302,73 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
               _buildDynamicWaveform(stateColor, isDark),
               const SizedBox(height: 18),
 
-              // 2. STEP INSTRUCTION CARD (Lime Badge + Large 24pt Bold Text)
+              // RECONNECTING / NETWORK LOSS BANNER (Task 2)
+              if (_isReconnecting) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _reconnectFailed
+                        ? Colors.redAccent.withValues(alpha: 0.15)
+                        : Colors.amber.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _reconnectFailed ? Colors.redAccent : Colors.amber.shade700,
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      if (!_reconnectFailed) ...[
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.amber.shade800,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Connection lost • Reconnecting to kitchen co-pilot...',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        const Icon(Icons.wifi_off_rounded, size: 18, color: Colors.redAccent),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Connection lost. Tap Retry to reconnect.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.red.shade200 : Colors.red.shade900,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _manualRetryReconnect,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            backgroundColor: Colors.redAccent,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          child: const Text('Retry', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+
+              // 2. STEP INSTRUCTION CARD (Lime Badge + Large 24pt Bold Text + Dish Thumbnail)
               Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -1122,75 +1388,114 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
-                                Text(
-                                  _recipeName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color: isDark ? Colors.grey.shade300 : CookTalkTheme.forestGreen,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    if (widget.initialRecipe.verified)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                                          borderRadius: BorderRadius.circular(6),
-                                          border: Border.all(
-                                            color: const Color(0xFF10B981),
-                                            width: 0.8,
-                                          ),
+                                _buildDishThumbnail(isDark),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _recipeName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark ? Colors.grey.shade300 : CookTalkTheme.forestGreen,
                                         ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.verified_rounded,
-                                              size: 11,
-                                              color: Color(0xFF10B981),
-                                            ),
-                                            SizedBox(width: 3),
-                                            Text(
-                                              'Verified',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFF10B981),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        crossAxisAlignment: WrapCrossAlignment.center,
+                                        children: [
+                                          if (widget.initialRecipe.verified)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: const Color(0xFF10B981),
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.verified_rounded,
+                                                    size: 11,
+                                                    color: Color(0xFF10B981),
+                                                  ),
+                                                  SizedBox(width: 3),
+                                                  Text(
+                                                    'Verified',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: Color(0xFF10B981),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            )
+                                          else
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.amber.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: Colors.amber.shade700,
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.auto_awesome_rounded,
+                                                    size: 10,
+                                                    color: Colors.amber.shade700,
+                                                  ),
+                                                  const SizedBox(width: 3),
+                                                  Text(
+                                                    'AI Generated',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: Colors.amber.shade800,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                          ],
-                                        ),
+                                          if (SupabaseService.instance.hasCookedBefore(widget.initialRecipe.id))
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: isDark
+                                                    ? const Color(0xFF263042)
+                                                    : const Color(0xFFE9EDDF),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                'Cooked before',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: isDark ? CookTalkTheme.primaryAccent : CookTalkTheme.forestGreen,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
                                       ),
-                                    if (SupabaseService.instance.hasCookedBefore(widget.initialRecipe.id))
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: isDark
-                                              ? const Color(0xFF263042)
-                                              : const Color(0xFFE9EDDF),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          'Cooked before',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
-                                            color: isDark ? CookTalkTheme.primaryAccent : CookTalkTheme.forestGreen,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -1240,7 +1545,7 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
               ),
               const SizedBox(height: 16),
 
-              // 3. MULTI-TIMER SECTION (⏱️ [Label]: [MM:SS] [ Cancel ])
+              // 3. MULTI-TIMER SECTION (Material vector icons + [Label]: [MM:SS] [ Cancel ])
               if (_timers.isNotEmpty)
                 ..._timers.map((t) {
                   final rem = t.remainingSeconds;
@@ -1264,7 +1569,13 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                     ),
                     child: Row(
                       children: [
-                        Text(isDone ? '🔔' : '⏱️', style: const TextStyle(fontSize: 20)),
+                        Icon(
+                          isDone ? Icons.notifications_active_rounded : Icons.timer_outlined,
+                          size: 22,
+                          color: isDone
+                              ? Colors.redAccent
+                              : (isDark ? CookTalkTheme.primaryAccent : CookTalkTheme.forestGreen),
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: RichText(
@@ -1352,7 +1663,11 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                   ),
                   child: Row(
                     children: [
-                      const Text('⏱️', style: TextStyle(fontSize: 18)),
+                      Icon(
+                        Icons.timer_outlined,
+                        size: 20,
+                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -1384,7 +1699,11 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('💬', style: TextStyle(fontSize: 18)),
+                        Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 20,
+                          color: isDark ? CookTalkTheme.primaryAccent : CookTalkTheme.forestGreen,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
@@ -1399,11 +1718,27 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                         ),
                       ],
                     ),
-                    if (_lastTtsTtfbMs != null || _lastE2eLatencyMs != null) ...[
+                    if (_showLatencyDemo && (_lastTtsTtfbMs != null || _lastE2eLatencyMs != null)) ...[
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: CookTalkTheme.speakingAccent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'DEMO STATS',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: CookTalkTheme.speakingAccent,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           if (_lastTtsTtfbMs != null)
                             Text(
                               'TTS: ${_lastTtsTtfbMs}ms',

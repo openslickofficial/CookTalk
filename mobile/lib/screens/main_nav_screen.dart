@@ -19,6 +19,8 @@ class _MainNavScreenState extends State<MainNavScreen> {
 
   void _launchCookingSession(Dish? dish) {
     final host = Platform.isAndroid ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+    
+    // If no dish is selected, create a generic session where LLM will ask for the dish
     final targetRecipe = dish != null
         ? RecipeItem(
             id: dish.slug,
@@ -31,12 +33,12 @@ class _MainNavScreenState extends State<MainNavScreen> {
             ingredients: dish.ingredients.map((i) => {'name': i.name, 'quantity': i.quantity, 'unit': i.unit}).toList(),
           )
         : const RecipeItem(
-            id: 'pancakes',
-            name: 'Golden Diner-Style Fluffy Buttermilk Pancakes',
-            description: 'Classic diner-style pancakes with crispy edges and soft centers.',
-            totalSteps: 5,
+            id: 'open-session',
+            name: 'Open Cooking Session',
+            description: 'Start a voice session to select and cook any recipe',
+            totalSteps: 0,
             verified: false,
-            source: 'curated',
+            source: 'open',
           );
 
     Navigator.of(context).push(
@@ -59,6 +61,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
     ];
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           // Current Tab Page

@@ -63,16 +63,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(7),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF143826),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.soup_kitchen_rounded,
-                          color: Color(0xFFD2E68B),
-                          size: 20,
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.asset(
+                          'assets/app_icon.png',
+                          width: 34,
+                          height: 34,
+                          fit: BoxFit.fill,
                         ),
                       ),
                       const SizedBox(width: 8),

@@ -12,8 +12,11 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  bool _isLoading = false;
+  bool _isAppleLoading = false;
+  bool _isGoogleLoading = false;
   String? _errorMessage;
+
+  bool get _isLoading => _isAppleLoading || _isGoogleLoading;
 
   @override
   void initState() {
@@ -44,7 +47,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _handleSignIn({required bool isApple}) async {
     setState(() {
-      _isLoading = true;
+      if (isApple) {
+        _isAppleLoading = true;
+      } else {
+        _isGoogleLoading = true;
+      }
       _errorMessage = null;
     });
 
@@ -74,7 +81,13 @@ class _AuthScreenState extends State<AuthScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          if (isApple) {
+            _isAppleLoading = false;
+          } else {
+            _isGoogleLoading = false;
+          }
+        });
       }
     }
   }
@@ -214,7 +227,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               borderRadius: BorderRadius.circular(28),
                             ),
                           ),
-                          child: _isLoading
+                          child: _isAppleLoading
                               ? SizedBox(
                                   width: 22,
                                   height: 22,
@@ -264,7 +277,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               borderRadius: BorderRadius.circular(28),
                             ),
                           ),
-                          child: _isLoading
+                          child: _isGoogleLoading
                               ? SizedBox(
                                   width: 22,
                                   height: 22,
