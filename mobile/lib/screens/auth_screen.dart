@@ -1,8 +1,11 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/supabase_service.dart';
 import 'preferences_screen.dart';
 import 'main_nav_screen.dart';
+import 'terms_of_service_screen.dart';
+import 'privacy_policy_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -121,8 +124,8 @@ class _AuthScreenState extends State<AuthScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Image.network(
-                  'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=1200&q=85',
+                Image.asset(
+                  'assets/hero-auth.jpg',
                   fit: BoxFit.cover,
                   alignment: Alignment.topCenter,
                   errorBuilder: (_, __, ___) => Container(
@@ -171,6 +174,31 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // App Icon
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Image.asset(
+                          'assets/app_icon.png',
+                          width: 72,
+                          height: 72,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF143826),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Icon(
+                              Icons.restaurant_rounded,
+                              size: 36,
+                              color: Color(0xFFD2E68B),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      
                       // Headline (moved upward, without 3 indicator lines)
                       Text(
                         'Welcome to CookTalk 👋',
@@ -209,52 +237,45 @@ class _AuthScreenState extends State<AuthScreen> {
                         const SizedBox(height: 12),
                       ],
 
-                      // BUTTON 1: Continue with Apple
+                      // BUTTON 1: Continue with Apple (disabled - not yet configured)
                       SizedBox(
                         width: double.infinity,
                         height: 52,
                         child: OutlinedButton(
-                          onPressed: _isLoading ? null : () => _handleSignIn(isApple: true),
+                          onPressed: null, // Disabled
                           style: OutlinedButton.styleFrom(
-                            backgroundColor: buttonBg,
-                            foregroundColor: appleTextColor,
+                            backgroundColor: buttonBg.withValues(alpha: 0.5),
+                            foregroundColor: appleTextColor.withValues(alpha: 0.5),
                             side: BorderSide(
-                              color: buttonBorder,
+                              color: buttonBorder.withValues(alpha: 0.5),
                               width: 1.2,
                             ),
-                            elevation: isDark ? 0 : 0.5,
+                            elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(28),
                             ),
+                            disabledBackgroundColor: buttonBg.withValues(alpha: 0.5),
+                            disabledForegroundColor: appleTextColor.withValues(alpha: 0.5),
                           ),
-                          child: _isAppleLoading
-                              ? SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: appleTextColor,
-                                  ),
-                                )
-                              : Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.apple,
-                                      size: 22,
-                                      color: appleTextColor,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      'Continue with Apple',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
-                                        color: appleTextColor,
-                                      ),
-                                    ),
-                                  ],
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.apple,
+                                size: 22,
+                                color: appleTextColor.withValues(alpha: 0.5),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Continue with Apple',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: appleTextColor.withValues(alpha: 0.5),
                                 ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -324,7 +345,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                       const SizedBox(height: 18),
 
-                      // ACCEPTANCE TEXT (Cleanly formatted across 2 lines)
+                      // ACCEPTANCE TEXT (Cleanly formatted across 2 lines with tappable links)
                       Text.rich(
                         TextSpan(
                           text: 'By continuing, you agree to our ',
@@ -341,6 +362,14 @@ class _AuthScreenState extends State<AuthScreen> {
                                 fontWeight: FontWeight.w600,
                                 decoration: TextDecoration.underline,
                               ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const TermsOfServiceScreen(),
+                                    ),
+                                  );
+                                },
                             ),
                             const TextSpan(text: ' and\n'),
                             TextSpan(
@@ -356,6 +385,14 @@ class _AuthScreenState extends State<AuthScreen> {
                                 fontWeight: FontWeight.w600,
                                 decoration: TextDecoration.underline,
                               ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const PrivacyPolicyScreen(),
+                                    ),
+                                  );
+                                },
                             ),
                             const TextSpan(text: '.'),
                           ],

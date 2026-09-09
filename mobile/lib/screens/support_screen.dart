@@ -53,6 +53,7 @@ class _SupportScreenState extends State<SupportScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (modalCtx) {
         final isDark = Theme.of(modalCtx).brightness == Brightness.dark;
         return Container(

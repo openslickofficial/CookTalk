@@ -75,35 +75,13 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                     ),
                     const SizedBox(height: 8),
 
-                    // Subtitle & Validation Counter Pill
-                    Row(
-                      children: [
-                        Text(
-                          'Select at least 3 favorite cuisines',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDark ? Colors.white70 : const Color(0xFF64748B),
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _isValid
-                                ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                : Colors.amber.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${_selectedCuisines.length}/3 selected',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: _isValid ? const Color(0xFF10B981) : Colors.amber[800],
-                            ),
-                          ),
-                        ),
-                      ],
+                    // Subtitle
+                    Text(
+                      'Select at least 3 favorite cuisines',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                      ),
                     ),
                     const SizedBox(height: 24),
 

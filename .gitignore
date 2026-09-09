@@ -3,10 +3,18 @@ node_modules/
 __pycache__/
 venv/
 *.mp3
-baseline_results.jsonl
-streaming_results.jsonl
-client_perceived_results.jsonl
-.venv/
-*.pyc
+*.jsonl
 dist/
 web/dist/
+# LiveKit environment files (contain secret keys!)
+agent/.env.livekit
+# Temporary/duplicate documentation
+*DEPLOY*.md
+!FREE_DEPLOYMENT.md
+!DEPLOYMENT_ARCHITECTURE.md
+APP_STORE_ASSETS.md
+
+# Android release keystore (NEVER commit this!)
+*.jks
+*.keystore
+key.properties

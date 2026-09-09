@@ -61,92 +61,101 @@ class _MainNavScreenState extends State<MainNavScreen> {
       ProfileScreen(appThemeMode: appThemeMode),
     ];
 
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      body: Stack(
-        children: [
-          // Current Tab Page
-          IndexedStack(
-            index: _currentTab,
-            children: pages,
-          ),
+    return PopScope(
+      canPop: _currentTab == 0, // Only allow pop when on home tab
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
+        if (!didPop && _currentTab != 0) {
+          // If not on home tab and trying to exit, navigate to home instead
+          setState(() => _currentTab = 0);
+        }
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            // Current Tab Page
+            IndexedStack(
+              index: _currentTab,
+              children: pages,
+            ),
 
-          // Floating Pill Bottom Navigation Bar (Pixel-accurate match with uploaded image)
-          Positioned(
-            bottom: 24,
-            left: 28,
-            right: 28,
-            child: Container(
-              height: 66,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E232B), // Exact dark charcoal pill background
-                borderRadius: BorderRadius.circular(36),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  // Tab 0: Home (Active indicator in lime-green pill)
-                  _buildNavButton(
-                    index: 0,
-                    icon: Icons.home_rounded,
-                    isActive: _currentTab == 0,
-                  ),
+            // Floating Pill Bottom Navigation Bar (Pixel-accurate match with uploaded image)
+            Positioned(
+              bottom: 24,
+              left: 28,
+              right: 28,
+              child: Container(
+                height: 66,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E232B), // Exact dark charcoal pill background
+                  borderRadius: BorderRadius.circular(36),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    // Tab 0: Home (Active indicator in lime-green pill)
+                    _buildNavButton(
+                      index: 0,
+                      icon: Icons.home_rounded,
+                      isActive: _currentTab == 0,
+                    ),
 
-                  // Tab 1: Favorites (Heart)
-                  _buildNavButton(
-                    index: 1,
-                    icon: Icons.favorite_border_rounded,
-                    activeIcon: Icons.favorite_rounded,
-                    isActive: _currentTab == 1,
-                  ),
+                    // Tab 1: Favorites (Heart)
+                    _buildNavButton(
+                      index: 1,
+                      icon: Icons.favorite_border_rounded,
+                      activeIcon: Icons.favorite_rounded,
+                      isActive: _currentTab == 1,
+                    ),
 
-                  // Center Action: Voice Cooking (Mic)
-                  GestureDetector(
-                    onTap: () => _launchCookingSession(null),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.white24, width: 1.5),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.mic_rounded,
-                          color: Colors.white,
-                          size: 24,
+                    // Center Action: Voice Cooking (Mic)
+                    GestureDetector(
+                      onTap: () => _launchCookingSession(null),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white24, width: 1.5),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.mic_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
-                  // Tab 2: Recently Viewed (Clock/History icon)
-                  _buildNavButton(
-                    index: 2,
-                    icon: Icons.history_rounded,
-                    isActive: _currentTab == 2,
-                  ),
+                    // Tab 2: Recently Viewed (Clock/History icon)
+                    _buildNavButton(
+                      index: 2,
+                      icon: Icons.history_rounded,
+                      isActive: _currentTab == 2,
+                    ),
 
-                  // Tab 3: Profile (User silhouette)
-                  _buildNavButton(
-                    index: 3,
-                    icon: Icons.person_outline_rounded,
-                    activeIcon: Icons.person_rounded,
-                    isActive: _currentTab == 3,
-                  ),
-                ],
+                    // Tab 3: Profile (User silhouette)
+                    _buildNavButton(
+                      index: 3,
+                      icon: Icons.person_outline_rounded,
+                      activeIcon: Icons.person_rounded,
+                      isActive: _currentTab == 3,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

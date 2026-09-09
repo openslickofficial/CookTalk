@@ -268,6 +268,20 @@ class SupabaseService {
     await _saveLocalProfile(updated);
   }
 
+  /// Update user allergies for Allergy Safeguard
+  Future<void> updateUserAllergies(List<String> allergies) async {
+    if (_currentProfile == null) return;
+    final updated = _currentProfile!.copyWith(allergies: allergies);
+    if (_isSupabaseInitialized) {
+      try {
+        await Supabase.instance.client.from('profiles').upsert(updated.toJson());
+      } catch (e) {
+        debugPrint('[SupabaseService] Failed to update allergies in Supabase: $e');
+      }
+    }
+    await _saveLocalProfile(updated);
+  }
+
   // Voice & Kitchen preferences
   String get rimeVoiceStyle => _rimeVoiceStyle;
   Future<void> setRimeVoiceStyle(String style) async {

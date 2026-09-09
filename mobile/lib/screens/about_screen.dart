@@ -220,7 +220,7 @@ class AboutScreen extends StatelessWidget {
             // Copyright
             Center(
               child: Text(
-                '© 2024 CookTalk. All rights reserved.',
+                '© 2026 CookTalk. All rights reserved.',
                 style: TextStyle(
                   fontSize: 12,
                   color: metaTextColor,

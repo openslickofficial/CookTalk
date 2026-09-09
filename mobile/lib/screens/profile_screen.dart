@@ -42,16 +42,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ];
 
   final List<Map<String, String>> _voiceOptions = [
-    {'id': 'Astra', 'name': 'Astra', 'desc': 'Natural, warm, upbeat sous-chef'},
-    {'id': 'Coda', 'name': 'Coda', 'desc': 'Crisp, articulate culinary pacing'},
-    {'id': 'Warm Chef', 'name': 'Warm Chef', 'desc': 'Friendly, encouraging kitchen guide'},
-    {'id': 'Direct Chef', 'name': 'Direct Chef', 'desc': 'Concise, rapid-fire instruction'},
+    {'id': 'Astra', 'name': 'Astra', 'desc': 'Female • Natural, warm, upbeat sous-chef'},
+    {'id': 'Coda', 'name': 'Coda', 'desc': 'Male • Crisp, articulate culinary pacing'},
   ];
 
   final List<Map<String, String>> _vadOptions = [
     {'id': 'Quiet', 'name': 'Quiet Kitchen', 'desc': 'High sensitivity for calm environments'},
     {'id': 'Standard', 'name': 'Standard', 'desc': 'Balanced ambient noise filtering'},
     {'id': 'Loud Kitchen', 'name': 'Exhaust Fan / High Noise', 'desc': 'Maximum noise isolation near stove'},
+  ];
+
+  final List<Map<String, String>> _commonAllergies = [
+    {'name': 'Dairy', 'icon': '🥛'},
+    {'name': 'Eggs', 'icon': '🥚'},
+    {'name': 'Peanuts', 'icon': '🥜'},
+    {'name': 'Tree Nuts', 'icon': '🌰'},
+    {'name': 'Soy', 'icon': '🫘'},
+    {'name': 'Wheat', 'icon': '🌾'},
+    {'name': 'Fish', 'icon': '🐟'},
+    {'name': 'Shellfish', 'icon': '🦐'},
+    {'name': 'Sesame', 'icon': '🫘'},
+    {'name': 'Gluten', 'icon': '🍞'},
+    {'name': 'Lactose', 'icon': '🧈'},
+    {'name': 'Corn', 'icon': '🌽'},
   ];
 
   void _openEditProfileModal(UserProfile profile) {
@@ -62,6 +75,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (modalContext) {
         final isDark = Theme.of(modalContext).brightness == Brightness.dark;
 
@@ -210,6 +224,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (modalContext) {
         final isDark = Theme.of(modalContext).brightness == Brightness.dark;
 
@@ -370,6 +385,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (modalContext) {
         final isDark = Theme.of(modalContext).brightness == Brightness.dark;
 
@@ -415,6 +431,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 final isSelected = currentVoice == opt['id'];
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: isSelected
                         ? (isDark
@@ -426,10 +443,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: isSelected
                           ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
                           : (isDark ? const Color(0xFF2E384D) : const Color(0xFFE2E8F0)),
+                      width: 2.0,
                     ),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                     leading: Icon(
                       Icons.record_voice_over_rounded,
                       color: isSelected
@@ -479,6 +497,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (modalContext) {
         final isDark = Theme.of(modalContext).brightness == Brightness.dark;
 
@@ -524,6 +543,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 final isSelected = currentVad == opt['id'];
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: isSelected
                         ? const Color(0xFF10B981).withValues(alpha: 0.12)
@@ -533,10 +553,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: isSelected
                           ? const Color(0xFF10B981)
                           : (isDark ? const Color(0xFF2E384D) : const Color(0xFFE2E8F0)),
+                      width: 2.0,
                     ),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                     leading: Icon(
                       Icons.graphic_eq_rounded,
                       color: isSelected ? const Color(0xFF10B981) : (isDark ? Colors.white60 : const Color(0xFF64748B)),
@@ -569,6 +590,174 @@ class _ProfileScreenState extends State<ProfileScreen> {
               }),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  void _openAllergySelector(UserProfile profile) {
+    final currentAllergies = Set<String>.from(profile.allergies);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (modalContext) {
+        final isDark = Theme.of(modalContext).brightness == Brightness.dark;
+
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF161A24) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.health_and_safety_rounded, color: Color(0xFFEF4444), size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Allergy Safeguard',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? Colors.white : const Color(0xFF1E293B),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Select allergens to avoid',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: _commonAllergies.map((allergen) {
+                      final name = allergen['name']!;
+                      final icon = allergen['icon']!;
+                      final isSelected = currentAllergies.contains(name);
+
+                      return GestureDetector(
+                        onTap: () {
+                          setModalState(() {
+                            if (isSelected) {
+                              currentAllergies.remove(name);
+                            } else {
+                              currentAllergies.add(name);
+                            }
+                          });
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFFEF4444)
+                                : (isDark ? const Color(0xFF1A1F2B) : Colors.white),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFFEF4444)
+                                  : (isDark ? const Color(0xFF2A3447) : const Color(0xFFE2E8F0)),
+                              width: 1.5,
+                            ),
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(0xFFEF4444).withValues(alpha: 0.25),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(icon, style: const TextStyle(fontSize: 16)),
+                              const SizedBox(width: 8),
+                              Text(
+                                name,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: isSelected ? Colors.white : (isDark ? Colors.white : const Color(0xFF1E293B)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        await SupabaseService.instance.updateUserAllergies(currentAllergies.toList());
+                        if (modalContext.mounted) Navigator.of(modalContext).pop();
+                        setState(() {});
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        currentAllergies.isEmpty
+                            ? 'Skip (No Allergies)'
+                            : 'Save ${currentAllergies.length} Allerg${currentAllergies.length == 1 ? 'y' : 'ies'}',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? const Color(0xFF143826) : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -832,7 +1021,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: const Icon(Icons.record_voice_over_rounded, color: Color(0xFF8B5CF6), size: 20),
                 ),
                 title: Text(
-                  'Rime Voice Character',
+                  'Voice Character',
                   style: TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w700,
@@ -891,6 +1080,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   setState(() {});
                 },
               ),
+              _buildDivider(isDark),
+
+              // Allergy Safeguard
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+                leading: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.health_and_safety_rounded, color: Color(0xFFEF4444), size: 20),
+                ),
+                title: Text(
+                  'Allergy Safeguard',
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF1E293B),
+                  ),
+                ),
+                subtitle: Text(
+                  profile.allergies.isEmpty
+                      ? 'No allergies set • Tap to configure'
+                      : '${profile.allergies.length} allerg${profile.allergies.length == 1 ? 'y' : 'ies'} configured',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                onTap: () => _openAllergySelector(profile),
+              ),
             ],
           ),
 
@@ -936,7 +1159,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     subtitle: Text(
-                      isOledDark ? 'OLED Dark (#0D0F12)' : 'Clean Light Theme',
+                      isOledDark ? 'OLED Dark' : 'Clean Light Theme',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white60 : const Color(0xFF64748B),

@@ -26,6 +26,24 @@ class _DishHistoryDetailScreenState extends State<DishHistoryDetailScreen> {
         SupabaseService.instance.isFavorite(widget.dish.slug);
   }
 
+  List<String> _getMatchingAllergens() {
+    final user = SupabaseService.instance.currentUser;
+    if (user == null || user.allergies.isEmpty) return [];
+
+    final matchingAllergens = <String>[];
+    for (final allergen in user.allergies) {
+      for (final ingredient in widget.dish.ingredients) {
+        if (ingredient.name.toLowerCase().contains(allergen.toLowerCase()) ||
+            allergen.toLowerCase().contains(ingredient.name.toLowerCase())) {
+          if (!matchingAllergens.contains(allergen)) {
+            matchingAllergens.add(allergen);
+          }
+        }
+      }
+    }
+    return matchingAllergens;
+  }
+
   void _toggleWishlist() {
     setState(() {
       _isWishlisted = !_isWishlisted;
@@ -287,6 +305,68 @@ class _DishHistoryDetailScreenState extends State<DishHistoryDetailScreen> {
 
             const SizedBox(height: 18),
 
+            // ALLERGY WARNING BANNER (if allergens detected)
+            ...() {
+              final matchingAllergens = _getMatchingAllergens();
+              if (matchingAllergens.isEmpty) return <Widget>[];
+              
+              return [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFFEF4444),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.warning_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Allergy Warning',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFEF4444),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Contains: ${matchingAllergens.join(', ')}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white70 : const Color(0xFF4A5568),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+              ];
+            }(),
+
             // 3. TIME TAKEN & COOKING METRICS GRID
             Container(
               padding: const EdgeInsets.all(16),
@@ -359,41 +439,7 @@ class _DishHistoryDetailScreenState extends State<DishHistoryDetailScreen> {
 
             const SizedBox(height: 18),
 
-            // 4. INTERACTIVE "ADD TO WISHLIST" BUTTON
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                onPressed: _toggleWishlist,
-                icon: Icon(
-                  _isWishlisted ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                  size: 20,
-                  color: _isWishlisted ? Colors.white : const Color(0xFF143826),
-                ),
-                label: Text(
-                  _isWishlisted ? 'In Wishlist • Tap to Remove' : 'Add to Wishlist',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.2,
-                    color: _isWishlisted ? Colors.white : const Color(0xFF143826),
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isWishlisted
-                      ? const Color(0xFFE53E3E)
-                      : const Color(0xFFD2E68B),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // 5. INGREDIENTS LIST
+            // 4. INGREDIENTS LIST
             Text(
               'Ingredients (${dish.ingredients.length})',
               style: TextStyle(
@@ -461,7 +507,7 @@ class _DishHistoryDetailScreenState extends State<DishHistoryDetailScreen> {
 
             const SizedBox(height: 24),
 
-            // 6. TOTAL STEPS BREAKDOWN
+            // 5. TOTAL STEPS BREAKDOWN
             Text(
               'Cooking Steps (${dish.steps.length})',
               style: TextStyle(

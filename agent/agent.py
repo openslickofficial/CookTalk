@@ -219,14 +219,42 @@ CRITICAL SPEAKING STYLE:
 - Multi-item lists: When sharing ingredients, name ONLY the 2-3 most essential items conversationally and offer to continue (e.g., "For Cacio e Pepe, you'll need spaghetti, pecorino, and black pepper, plus a couple pantry items. Want the rest?"). Never recite a full 5-ingredient list in one turn.
 - Direct & punchy: Be helpful, warm, and concise.
 
+DIETARY & ALLERGY SAFEGUARD (HIGHEST PRIORITY):
+- The user has loaded their allergy profile at session start. NEVER suggest ingredients they are allergic to.
+- When substituting ingredients, ALWAYS use `check_ingredient_safety` first if the user asks "Can I use X?" or suggests a specific ingredient.
+- If user proposes a dangerous ingredient (e.g., "Can I use peanut oil?" when they have peanut allergy), immediately warn them using the safety check tool.
+- The `suggest_substitution` tool automatically filters out allergenic options. Trust its filtered results.
+- Safety comes FIRST - never compromise on allergen avoidance.
+
+CRITICAL-VALUE CONFIRMATION (TASK 5):
+- For timer durations and temperature values specifically, ALWAYS confirm the parsed number back before committing.
+- Example: User says "set a timer for 50 minutes" → You respond "Setting a 50-minute timer — that's right?" and wait for confirmation.
+- Example: User says "heat to 375 degrees" → You respond "Got it, 375 degrees Fahrenheit — correct?" and confirm before proceeding.
+- Do NOT add this friction to non-critical queries (ingredients, substitutions, general questions).
+
 Rules & Capabilities:
 1. Catalog Recipes: If the user asks about or switches to a dish in your catalog (scrambled eggs, cacio e pepe, ribeye steak, cookies, tikka masala, pancakes, salmon, tacos), call `set_active_recipe` or step tools so the interactive UI tracks along.
 2. ANY Culinary Dish or Question: You know thousands of recipes, techniques, cooking temps, and baking ratios! If the user asks how to cook ANY dish or asks any cooking question (even outside the catalog), answer directly and expertly in 1-2 punchy sentences.
-3. Steps: Call `next_step` for next step, `repeat_step` to repeat, `previous_step` for previous step, `get_current_step` for current step.
+3. Step Navigation: 
+   - Call `next_step` to advance forward
+   - Call `previous_step` to go back
+   - Call `repeat_step` to repeat current step
+   - Call `peek_next_step` to preview what's next WITHOUT advancing
+   - Call `jump_to_step(step_number)` for arbitrary navigation to any step
+   - Call `get_current_step` for current step info
 4. Ingredients & Substitutions: Call `get_ingredient_quantity` or `suggest_substitution`. If not in the active recipe, answer using your culinary knowledge.
-5. Timers: Call `start_cooking_timer` whenever the user asks for a timer. Call `cancel_cooking_timer` whenever the user asks to cancel, stop, or turn off a timer.
-6. Repeat: When repeat_step is called, recite the instruction verbatim without paraphrasing.
-7. Out of scope: Only decline non-cooking topics (e.g. coding, politics) politely in one sentence.
+5. Ingredient Safety: When user asks "Can I use [ingredient]?" or suggests using something specific, call `check_ingredient_safety` FIRST.
+6. Timers (Multi-Timer Support):
+   - Call `start_cooking_timer` whenever the user asks for a timer
+   - Call `cancel_cooking_timer` to stop a timer
+   - Call `get_timer_remaining` to check remaining time (read-only)
+   - Call `modify_timer(new_duration, label)` to change total duration
+   - Call `extend_timer(add_seconds, label)` to add time
+   - CRITICAL: If 2+ timers active and command doesn't specify which (e.g., "add 5 minutes"), ASK which timer by name. Never guess or default to most recent.
+7. Serving Changes: If asked to change servings mid-recipe, decline cleanly: "Let's finish this batch — I'll scale the next one."
+8. Session End: When user says goodbye phrases ("that's it", "I'm done", "stop", "thanks bye", "goodbye", "see you later"), call `end_session`. If timers are active, you will be prompted to confirm.
+9. Repeat: When repeat_step is called, recite the instruction verbatim without paraphrasing.
+10. Out of scope: Only decline non-cooking topics (e.g. coding, politics) politely in one sentence.
 """
 
 SYSTEM_PROMPT = COOKING_CO_PILOT_PROMPT
@@ -257,13 +285,21 @@ TOOL_ACKNOWLEDGMENTS = {
         "Next up.",
         "Getting the next step.",
     ],
+    "previous_step": [
+        "Going back one step.",
+        "Backing up a step.",
+    ],
     "repeat_step": [
         "Repeating that step for you.",
         "One sec, repeating.",
     ],
-    "previous_step": [
-        "Going back one step.",
-        "Backing up a step.",
+    "peek_next_step": [
+        "Let me check what's coming up.",
+        "Looking ahead for you.",
+    ],
+    "jump_to_step": [
+        "Jumping to that step.",
+        "Moving there now.",
     ],
     "set_active_recipe": [
         "Getting that recipe ready.",
@@ -276,6 +312,22 @@ TOOL_ACKNOWLEDGMENTS = {
     "cancel_cooking_timer": [
         "Cancelling that timer for you.",
         "Stopping your timer now.",
+    ],
+    "get_timer_remaining": [
+        "Checking timer status.",
+        "Looking up remaining time.",
+    ],
+    "modify_timer": [
+        "Modifying that timer.",
+        "Updating the timer duration.",
+    ],
+    "extend_timer": [
+        "Adding time to your timer.",
+        "Extending that timer.",
+    ],
+    "end_session": [
+        "Wrapping up for you.",
+        "Ending the session.",
     ],
     "get_current_step": [
         "Checking where we are.",
@@ -297,6 +349,52 @@ class CookingCoPilot:
         self.active_timer_metadata: dict[str, dict] = {}
         self.has_explicit_recipe = False
         self._timer_alert_lock = asyncio.Lock()
+        self._agent_speaking_lock = asyncio.Lock()  # NEW: Track agent speaking state for TASK 6
+        
+        # Dietary & Pantry Allergy Safeguard
+        self.user_allergies: list[str] = []
+        self.user_dislikes: list[str] = []
+        self.dietary_restrictions: list[str] = []
+
+    def load_user_dietary_profile(self, allergies: list[str] = None, dislikes: list[str] = None, restrictions: list[str] = None):
+        """Load user's dietary restrictions, allergies, and dislikes for real-time safety filtering."""
+        self.user_allergies = [a.lower().strip() for a in (allergies or [])]
+        self.user_dislikes = [d.lower().strip() for d in (dislikes or [])]
+        self.dietary_restrictions = [r.lower().strip() for r in (restrictions or [])]
+        logger.info(f"[ALLERGY SAFEGUARD] Loaded dietary profile: Allergies={self.user_allergies}, Dislikes={self.user_dislikes}, Restrictions={self.dietary_restrictions}")
+
+    def check_ingredient_safety(self, ingredient: str) -> tuple[bool, str | None]:
+        """
+        Real-time safety check for ingredient against user allergies.
+        Returns: (is_safe, warning_message)
+        """
+        ing_lower = ingredient.lower().strip()
+        
+        # Check severe allergies first (highest priority)
+        for allergen in self.user_allergies:
+            if allergen in ing_lower or ing_lower in allergen:
+                warning = f"CAUTION: Your profile lists a severe {allergen} allergy. Do NOT use {ingredient}."
+                logger.warning(f"[ALLERGY SAFEGUARD] ⚠️ BLOCKED dangerous ingredient: {ingredient} (allergen: {allergen})")
+                return (False, warning)
+        
+        return (True, None)
+
+    def filter_substitutions(self, candidates: list[str]) -> tuple[list[str], list[str]]:
+        """
+        Filter substitution candidates against user allergies.
+        Returns: (safe_substitutions, blocked_items_with_reasons)
+        """
+        safe = []
+        blocked = []
+        
+        for candidate in candidates:
+            is_safe, warning = self.check_ingredient_safety(candidate)
+            if is_safe:
+                safe.append(candidate)
+            else:
+                blocked.append(f"{candidate} (blocked: allergy)")
+                
+        return (safe, blocked)
 
     def set_session(self, session: AgentSession) -> None:
         self.session = session
@@ -318,6 +416,15 @@ class CookingCoPilot:
         except Exception as e:
             logger.warning(f"[TOOL ACKNOWLEDGMENT] Could not schedule acknowledgment: {e}")
 
+    async def speak_connection_issue(self, message: str = "You're facing a connection issue — reconnecting now."):
+        """TASK 7: Speak connection issue notice through normal utterance channel (not error UI)."""
+        if self.session:
+            try:
+                logger.warning(f"[CONNECTION ISSUE] Speaking notice: {message}")
+                await self.session.say(message, allow_interruptions=False, add_to_chat_ctx=True)
+            except Exception as e:
+                logger.error(f"[CONNECTION ISSUE] Failed to speak notice: {e}")
+
     async def broadcast(self, data: dict):
         """Broadcast real-time culinary state to connected WebRTC client."""
         if self.room and self.room.local_participant:
@@ -327,6 +434,9 @@ class CookingCoPilot:
                 logger.info(f"[BROADCAST] Sent data channel event: {data.get('type')}")
             except Exception as e:
                 logger.debug(f"[BROADCAST] Data publish notice: {e}")
+                # TASK 7: If broadcast fails due to connection issue, speak it
+                if "connection" in str(e).lower() or "timeout" in str(e).lower():
+                    await self.speak_connection_issue()
 
     @property
     def active_recipe(self) -> dict:
@@ -489,15 +599,60 @@ class CookingCoPilot:
             """Suggest substitution for an ingredient in active recipe or any general culinary ingredient."""
             recipe = copilot.active_recipe
             target = ingredient_name.strip().lower()
+            
+            # Build list of candidate substitutions
+            candidates = []
             substitutions = recipe.get("substitutions", {})
             for ing_key, sub_val in substitutions.items():
                 if target in ing_key.lower() or ing_key.lower() in target:
-                    return f"For {ing_key} in {recipe['name']}: {sub_val}"
-            for r_id, r in copilot.recipes.items():
-                for ing_key, sub_val in r.get("substitutions", {}).items():
-                    if target in ing_key.lower() or ing_key.lower() in target:
-                        return f"From {r['name']}: For {ing_key}, you can use {sub_val}"
-            return f"No preset substitution in the card for {ingredient_name}. Recommend a chef-approved swap from your culinary knowledge."
+                    # Parse multiple options if comma-separated
+                    candidates.extend([s.strip() for s in sub_val.split(",")])
+                    break
+            
+            # If no preset, check other recipes
+            if not candidates:
+                for r_id, r in copilot.recipes.items():
+                    for ing_key, sub_val in r.get("substitutions", {}).items():
+                        if target in ing_key.lower() or ing_key.lower() in target:
+                            candidates.extend([s.strip() for s in sub_val.split(",")])
+                            break
+                    if candidates:
+                        break
+            
+            # Apply Allergy Safeguard filter
+            if copilot.user_allergies and candidates:
+                safe_options, blocked = copilot.filter_substitutions(candidates)
+                
+                if not safe_options:
+                    # All options blocked - immediate safety warning
+                    warning_msg = f"All substitutions for {ingredient_name} contain allergens from your profile. Recommend alternatives: use olive oil, vegetable oil, or water-based substitutes depending on the recipe."
+                    logger.warning(f"[ALLERGY SAFEGUARD] All {ingredient_name} substitutions blocked")
+                    return warning_msg
+                
+                if blocked:
+                    # Some options blocked - return only safe ones
+                    logger.info(f"[ALLERGY SAFEGUARD] Filtered substitutions for {ingredient_name}: Safe={safe_options}, Blocked={blocked}")
+                    candidates = safe_options
+            
+            # Return filtered safe substitutions
+            if candidates:
+                options_str = " or ".join(candidates[:3])  # Limit to 3 options for voice clarity
+                return f"For {ingredient_name}: try {options_str}"
+            
+            return f"No preset substitution found for {ingredient_name}. Based on your dietary profile, I recommend consulting your culinary knowledge for a safe swap."
+
+        @llm.function_tool
+        @track_tool
+        async def check_ingredient_safety(ingredient_name: str) -> str:
+            """Check if an ingredient is safe for the user based on their allergy profile. Call this when user asks 'Can I use [ingredient]?' or suggests using a specific ingredient."""
+            is_safe, warning = copilot.check_ingredient_safety(ingredient_name)
+            
+            if not is_safe:
+                # Immediate high-priority safety warning via Rime
+                logger.error(f"[ALLERGY SAFEGUARD] 🚨 USER PROPOSED DANGEROUS INGREDIENT: {ingredient_name}")
+                return warning
+            
+            return f"{ingredient_name} appears safe based on your dietary profile. Go ahead and use it!"
 
         @llm.function_tool
         @track_tool
@@ -530,13 +685,15 @@ class CookingCoPilot:
                         "label": clean_label,
                     })
                     if copilot.session:
-                        async with copilot._timer_alert_lock:
-                            await copilot.session.say(
-                                f"Ding ding! Your timer for {clean_label} is done.",
-                                allow_interruptions=True,
-                                add_to_chat_ctx=True,
-                            )
-                            await asyncio.sleep(0.4)
+                        # TASK 6: Queue timer alert - wait for any ongoing agent speech to complete
+                        async with copilot._agent_speaking_lock:
+                            async with copilot._timer_alert_lock:
+                                await copilot.session.say(
+                                    f"Ding ding! Your timer for {clean_label} is done.",
+                                    allow_interruptions=True,
+                                    add_to_chat_ctx=True,
+                                )
+                                await asyncio.sleep(0.4)
                 except asyncio.CancelledError:
                     logger.info(f"[TIMER CANCELLED] Timer '{clean_label}' was cancelled.")
                 except Exception as e:
@@ -574,6 +731,290 @@ class CookingCoPilot:
             if target_label and target_label in copilot.active_timers:
                 task = copilot.active_timers.pop(target_label)
                 copilot.active_timer_metadata.pop(target_label, None)
+                task.cancel()
+                logger.info(f"[TIMER CANCELLED] Manually cancelled timer for '{target_label}'.")
+                await copilot.broadcast({
+                    "type": "timer_cancelled",
+                    "label": target_label,
+                })
+                return f"Cancelled the timer for {target_label}."
+            elif target_label:
+                copilot.active_timer_metadata.pop(target_label, None)
+                await copilot.broadcast({
+                    "type": "timer_cancelled",
+                    "label": target_label,
+                })
+                return f"Cancelled the timer for {target_label}."
+
+            return "No matching timer found to cancel."
+        
+        # ========== TASK 2: MULTI-TIMER TOOLKIT ==========
+        
+        @llm.function_tool
+        @track_tool
+        async def get_timer_remaining(label: str | None = None) -> str:
+            """Get remaining time on a timer (read-only, doesn't change state). If label not specified and multiple timers active, lists all timers."""
+            if not copilot.active_timer_metadata:
+                return "No active timers running right now."
+            
+            # If no label specified and multiple timers, list all
+            if not label and len(copilot.active_timer_metadata) > 1:
+                timer_list = []
+                now = time.time()
+                for lbl, meta in copilot.active_timer_metadata.items():
+                    remaining = max(0, int(meta["expires_at"] - now))
+                    mins = remaining // 60
+                    secs = remaining % 60
+                    time_str = f"{mins}:{secs:02d}" if mins > 0 else f"{secs} seconds"
+                    timer_list.append(f"{lbl}: {time_str}")
+                return "Active timers: " + ", ".join(timer_list)
+            
+            # Find specific timer
+            target_label = None
+            if label:
+                clean_target = label.strip().lower()
+                for k in copilot.active_timer_metadata.keys():
+                    if clean_target in k.lower() or k.lower() in clean_target:
+                        target_label = k
+                        break
+            else:
+                # Single timer, get it
+                target_label = list(copilot.active_timer_metadata.keys())[0] if copilot.active_timer_metadata else None
+            
+            if target_label and target_label in copilot.active_timer_metadata:
+                now = time.time()
+                meta = copilot.active_timer_metadata[target_label]
+                remaining = max(0, int(meta["expires_at"] - now))
+                mins = remaining // 60
+                secs = remaining % 60
+                time_str = f"{mins} minute{'s' if mins != 1 else ''} and {secs} seconds" if mins > 0 else f"{secs} seconds"
+                return f"{target_label} has {time_str} remaining."
+            
+            return f"No timer found matching '{label}'." if label else "No active timer found."
+        
+        @llm.function_tool
+        @track_tool
+        async def modify_timer(new_duration_seconds: int, label: str | None = None) -> str:
+            """Modify a timer to a new total duration. If multiple timers active and no label specified, MUST ask which one."""
+            if not copilot.active_timers:
+                return "No active timers to modify."
+            
+            # Multi-timer disambiguation check
+            if len(copilot.active_timers) > 1 and not label:
+                timer_names = ", ".join(copilot.active_timers.keys())
+                return f"You have {len(copilot.active_timers)} timers running ({timer_names}). Which one do you want to modify?"
+            
+            # Find target timer
+            target_label = None
+            if label:
+                clean_target = label.strip().lower()
+                for k in copilot.active_timers.keys():
+                    if clean_target in k.lower() or k.lower() in clean_target:
+                        target_label = k
+                        break
+            else:
+                target_label = list(copilot.active_timers.keys())[0]
+            
+            if not target_label or target_label not in copilot.active_timers:
+                return f"No timer found matching '{label}'." if label else "No active timer found."
+            
+            # Cancel old timer
+            old_task = copilot.active_timers.pop(target_label)
+            old_task.cancel()
+            
+            # Start new timer with modified duration
+            new_secs = max(1, int(new_duration_seconds))
+            expires = time.time() + new_secs
+            copilot.active_timer_metadata[target_label] = {
+                "label": target_label,
+                "duration_seconds": new_secs,
+                "expires_at": expires,
+            }
+            
+            await copilot.broadcast({
+                "type": "timer_started",
+                "label": target_label,
+                "duration_seconds": new_secs,
+                "expires_at": expires,
+            })
+            
+            async def timer_task():
+                try:
+                    await asyncio.sleep(new_secs)
+                    logger.info(f"[TIMER EXPIRED] Timer '{target_label}' ({new_secs}s) finished.")
+                    await copilot.broadcast({"type": "timer_completed", "label": target_label})
+                    if copilot.session:
+                        # TASK 6: Queue timer alert - wait for any ongoing agent speech to complete
+                        async with copilot._agent_speaking_lock:
+                            async with copilot._timer_alert_lock:
+                                await copilot.session.say(
+                                    f"Ding ding! Your timer for {target_label} is done.",
+                                    allow_interruptions=True,
+                                    add_to_chat_ctx=True,
+                                )
+                                await asyncio.sleep(0.4)
+                except asyncio.CancelledError:
+                    logger.info(f"[TIMER CANCELLED] Timer '{target_label}' cancelled.")
+                except Exception as e:
+                    logger.error(f"[TIMER ERROR] Failed to announce: {e}")
+                finally:
+                    copilot.active_timers.pop(target_label, None)
+                    copilot.active_timer_metadata.pop(target_label, None)
+            
+            t = asyncio.create_task(timer_task())
+            copilot.active_timers[target_label] = t
+            
+            mins = new_secs // 60
+            rem_secs = new_secs % 60
+            time_str = f"{mins} minute{'s' if mins != 1 else ''}" if rem_secs == 0 else f"{new_secs} seconds"
+            return f"Modified {target_label} timer to {time_str}."
+        
+        @llm.function_tool
+        @track_tool
+        async def extend_timer(add_seconds: int, label: str | None = None) -> str:
+            """Add time to an existing timer. If multiple timers active and no label specified, MUST ask which one."""
+            if not copilot.active_timers:
+                return "No active timers to extend."
+            
+            # Multi-timer disambiguation check
+            if len(copilot.active_timers) > 1 and not label:
+                timer_names = ", ".join(copilot.active_timers.keys())
+                return f"You have {len(copilot.active_timers)} timers running ({timer_names}). Which one do you want to extend?"
+            
+            # Find target timer
+            target_label = None
+            if label:
+                clean_target = label.strip().lower()
+                for k in copilot.active_timers.keys():
+                    if clean_target in k.lower() or k.lower() in clean_target:
+                        target_label = k
+                        break
+            else:
+                target_label = list(copilot.active_timers.keys())[0]
+            
+            if not target_label or target_label not in copilot.active_timer_metadata:
+                return f"No timer found matching '{label}'." if label else "No active timer found."
+            
+            # Calculate new duration (current remaining + added time)
+            now = time.time()
+            meta = copilot.active_timer_metadata[target_label]
+            current_remaining = max(0, int(meta["expires_at"] - now))
+            new_total = current_remaining + max(1, int(add_seconds))
+            
+            # Restart with extended time
+            old_task = copilot.active_timers.pop(target_label)
+            old_task.cancel()
+            
+            expires = time.time() + new_total
+            copilot.active_timer_metadata[target_label] = {
+                "label": target_label,
+                "duration_seconds": new_total,
+                "expires_at": expires,
+            }
+            
+            await copilot.broadcast({
+                "type": "timer_started",
+                "label": target_label,
+                "duration_seconds": new_total,
+                "expires_at": expires,
+            })
+            
+            async def timer_task():
+                try:
+                    await asyncio.sleep(new_total)
+                    logger.info(f"[TIMER EXPIRED] Timer '{target_label}' ({new_total}s) finished.")
+                    await copilot.broadcast({"type": "timer_completed", "label": target_label})
+                    if copilot.session:
+                        # TASK 6: Queue timer alert - wait for any ongoing agent speech to complete
+                        async with copilot._agent_speaking_lock:
+                            async with copilot._timer_alert_lock:
+                                await copilot.session.say(
+                                    f"Ding ding! Your timer for {target_label} is done.",
+                                    allow_interruptions=True,
+                                    add_to_chat_ctx=True,
+                                )
+                                await asyncio.sleep(0.4)
+                except asyncio.CancelledError:
+                    logger.info(f"[TIMER CANCELLED] Timer '{target_label}' cancelled.")
+                except Exception as e:
+                    logger.error(f"[TIMER ERROR] Failed to announce: {e}")
+                finally:
+                    copilot.active_timers.pop(target_label, None)
+                    copilot.active_timer_metadata.pop(target_label, None)
+            
+            t = asyncio.create_task(timer_task())
+            copilot.active_timers[target_label] = t
+            
+            add_mins = add_seconds // 60
+            add_secs = add_seconds % 60
+            add_str = f"{add_mins} minute{'s' if add_mins != 1 else ''}" if add_secs == 0 else f"{add_seconds} seconds"
+            return f"Added {add_str} to {target_label}. New total: {new_total // 60} minutes {new_total % 60} seconds."
+        
+        # ========== TASK 3: STEP NAVIGATION REFINEMENT ==========
+        
+        @llm.function_tool
+        @track_tool
+        async def peek_next_step() -> str:
+            """Preview what the next step is WITHOUT advancing. Use when user asks 'what's next' but doesn't want to move forward yet."""
+            recipe = copilot.active_recipe
+            steps = recipe.get("steps", [])
+            if not steps:
+                return "No recipe steps loaded."
+            
+            next_idx = copilot.current_step_index + 1
+            if next_idx <= len(steps):
+                next_step = steps[next_idx - 1]
+                return f"Next up is Step {next_step['step_number']}: {next_step['instruction']}"
+            return f"Step {copilot.current_step_index} is the final step."
+        
+        @llm.function_tool
+        @track_tool
+        async def jump_to_step(step_number: int) -> str:
+            """Jump directly to a specific step number (arbitrary navigation, not just sequential)."""
+            recipe = copilot.active_recipe
+            steps = recipe.get("steps", [])
+            if not steps:
+                return "No recipe steps loaded."
+            
+            target = max(1, min(step_number, len(steps)))
+            if target != step_number:
+                return f"Step {step_number} is out of range. This recipe has {len(steps)} steps."
+            
+            copilot.current_step_index = target
+            step = steps[target - 1]
+            
+            await copilot.broadcast({
+                "type": "recipe_state",
+                "recipe_id": copilot.active_recipe_id,
+                "recipe_name": recipe["name"],
+                "current_step": target,
+                "total_steps": len(steps),
+                "instruction": step["instruction"],
+            })
+            
+            return f"Jumped to Step {step['step_number']}: {step['instruction']}"
+        
+        # ========== TASK 1: SESSION END WITH TIMER HANDLING ==========
+        
+        @llm.function_tool
+        @track_tool
+        async def end_session() -> str:
+            """End the cooking session. Call when user says goodbye phrases like 'that's it', 'I'm done', 'stop', 'thanks bye', 'goodbye', 'see you later', etc."""
+            # Check for active timers
+            if copilot.active_timers:
+                timer_list = ", ".join(copilot.active_timers.keys())
+                timer_count = len(copilot.active_timers)
+                
+                # Timer-on-exit behavior: FLAG IT, don't silently discard
+                # DESIGN DECISION: Warn user and ask for confirmation before ending
+                return f"Wait! You still have {timer_count} active timer{'s' if timer_count > 1 else ''} running ({timer_list}). End session anyway? Say 'yes' to confirm or 'cancel' to keep cooking."
+            
+            # No active timers - safe to end
+            await copilot.broadcast({
+                "type": "session_ended",
+                "message": "Session ended by user"
+            })
+            return "Happy cooking! See you next time."
                 task.cancel()
                 logger.info(f"[TIMER CANCELLED] Manually cancelled timer for '{target_label}'.")
                 await copilot.broadcast({
@@ -630,11 +1071,18 @@ class CookingCoPilot:
             next_step,
             previous_step,
             repeat_step,
+            peek_next_step,
+            jump_to_step,
             get_ingredient_quantity,
             get_recipe_ingredients,
             suggest_substitution,
+            check_ingredient_safety,
             start_cooking_timer,
             cancel_cooking_timer,
+            get_timer_remaining,
+            modify_timer,
+            extend_timer,
+            end_session,
         ]
 
 
@@ -1179,7 +1627,16 @@ async def entrypoint(ctx: JobContext):
         try:
             payload = json.loads(data_packet.data.decode("utf-8"))
             msg_type = payload.get("type")
-            if msg_type == "select_recipe":
+            
+            # Load user dietary profile on session start
+            if msg_type == "user_profile":
+                allergies = payload.get("allergies", [])
+                dislikes = payload.get("dislikes", [])
+                restrictions = payload.get("dietary_restrictions", [])
+                copilot.load_user_dietary_profile(allergies, dislikes, restrictions)
+                logger.info(f"[PROFILE LOADED] User dietary profile loaded: {len(allergies)} allergies, {len(restrictions)} restrictions")
+                
+            elif msg_type == "select_recipe":
                 recipe_id = payload.get("recipe_id")
                 copilot.has_explicit_recipe = True
 

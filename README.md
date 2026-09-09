@@ -12,9 +12,8 @@ Deploy the entire CookTalk project for **$0**:
 
 - **Agent Worker**: LiveKit Cloud (1,000 min/month free)
 - **Web Frontend**: Cloudflare Pages (unlimited bandwidth)
-- **Token Server**: Cloudflare Pages Functions (100k requests/day)
-- **Database**: Supabase (already deployed)
-- **Mobile App**: Direct APK distribution (Android)
+- **Token Server**: Render.com (750 hours/month free web service)
+- **Mobile App**: Direct APK distribution (Android, no Play Store fees)
 
 **Quick Start**: See **[FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md)** for complete step-by-step guide.
 
@@ -54,6 +53,28 @@ Deploy the entire CookTalk project for **$0**:
        |         Rime Streaming Endpoint (wss://users-ws.rime.ai/ws3)|
        +-------------------------------------------------------------+
 ```
+
+---
+
+## 1.5 Mobile App Architecture
+
+CookTalk includes a **Flutter mobile app** (Android) providing the same hands-free cooking experience on mobile devices:
+
+**Platform**: Flutter 3.x (Android APK)  
+**WebRTC Client**: `livekit_client` Flutter package  
+**Token Endpoint**: `https://cooltalk-token-server.onrender.com/token`  
+**Distribution**: Direct APK installation (no Google Play Store)  
+
+**Key Features**:
+- Same LiveKit WebRTC connection as web frontend
+- Voice-controlled recipe navigation and ingredient lookup
+- Real-time audio streaming with Rime TTS
+- Kitchen timer management with proactive voice alerts
+- 60-second connection timeout handling for Render cold starts
+
+**APK Location**: `mobile/build/app/outputs/flutter-apk/app-release.apk`
+
+**Important Note**: First connection after 15 minutes of server idle may take 30-60 seconds due to Render.com free tier cold start. The mobile app includes automatic retry logic and timeout handling for this scenario.
 
 ---
 
