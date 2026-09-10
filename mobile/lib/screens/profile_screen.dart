@@ -67,8 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     {'name': 'Corn', 'icon': '🌽'},
   ];
 
-  void _openEditProfileModal(UserProfile profile) {
-    final nameController = TextEditingController(text: profile.fullName);
+  void _openCookingTierEditor(UserProfile profile) {
     String selectedSkill = profile.cookingFrequency;
 
     showModalBottomSheet(
@@ -108,52 +107,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Edit Profile',
+                    'Cooking Skill Tier',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
                       color: isDark ? Colors.white : const Color(0xFF143826),
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Display Name',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white70 : const Color(0xFF4A5568),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: nameController,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white : const Color(0xFF1E293B),
-                    ),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: isDark ? const Color(0xFF0D0F12) : const Color(0xFFF1F5F9),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: isDark ? const Color(0xFF263042) : const Color(0xFFCBD5E1),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Cooking Skill Tier',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white70 : const Color(0xFF4A5568),
-                    ),
-                  ),
                   const SizedBox(height: 8),
+                  Text(
+                    'Select your cooking experience level',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -162,17 +131,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       return GestureDetector(
                         onTap: () => setModalState(() => selectedSkill = skill),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
                                 : (isDark ? const Color(0xFF222836) : const Color(0xFFF1F5F9)),
                             borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isSelected
+                                  ? (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
+                                  : (isDark ? const Color(0xFF263042) : const Color(0xFFCBD5E1)),
+                              width: 1.5,
+                            ),
                           ),
                           child: Text(
                             skill,
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: isSelected
                                   ? (isDark ? const Color(0xFF143826) : Colors.white)
@@ -189,15 +164,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     height: 48,
                     child: ElevatedButton(
                       onPressed: () async {
-                        final newName = nameController.text.trim();
-                        if (newName.isNotEmpty) {
-                          await SupabaseService.instance.updateProfile(
-                            fullName: newName,
-                            cookingFrequency: selectedSkill,
-                          );
-                          if (ctx.mounted) Navigator.of(ctx).pop();
-                          setState(() {});
-                        }
+                        await SupabaseService.instance.updateProfile(
+                          cookingFrequency: selectedSkill,
+                        );
+                        if (ctx.mounted) Navigator.of(ctx).pop();
+                        setState(() {});
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
@@ -205,7 +176,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         elevation: 0,
                       ),
-                      child: const Text('Save Profile Changes', style: TextStyle(fontWeight: FontWeight.w800)),
+                      child: const Text('Update Skill Tier', style: TextStyle(fontWeight: FontWeight.w800)),
                     ),
                   ),
                 ],
@@ -811,7 +782,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
           favoriteCuisines: ['Italian', 'Asian', 'American'],
           cookingFrequency: 'Daily Home Chef',
-          onboardingCompleted: true,
         );
 
     final currentVoice = SupabaseService.instance.rimeVoiceStyle;
@@ -904,59 +874,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               color: isDark ? Colors.white60 : const Color(0xFF64748B),
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          // Skill Badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
-                                  .withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.restaurant_rounded,
-                                  size: 12,
-                                  color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  profile.cookingFrequency,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w700,
-                                    color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         ],
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 40,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _openEditProfileModal(profile),
-                    icon: const Icon(Icons.edit_outlined, size: 16),
-                    label: const Text(
-                      'Edit Profile',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: isDark ? Colors.white70 : const Color(0xFF143826),
-                      side: BorderSide(
-                        color: isDark ? const Color(0xFF2E384D) : const Color(0xFFCBD5E1),
-                      ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -972,6 +893,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildCardContainer(
             isDark: isDark,
             children: [
+              // Cooking Skill Tier
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+                leading: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: (isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826))
+                        .withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.restaurant_rounded,
+                    color: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                    size: 20,
+                  ),
+                ),
+                title: Text(
+                  'Cooking Skill Tier',
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF1E293B),
+                  ),
+                ),
+                subtitle: Text(
+                  profile.cookingFrequency,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                onTap: () => _openCookingTierEditor(profile),
+              ),
+              _buildDivider(isDark),
+
               // Favorite Cuisines
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),

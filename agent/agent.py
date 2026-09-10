@@ -606,6 +606,9 @@ class CookingCoPilot:
         @track_tool
         async def get_current_step() -> str:
             """Get current recipe instruction."""
+            if copilot.active_recipe_id is None:
+                return "No recipe selected yet. Please tell me what you'd like to cook, or select a dish from the app."
+            
             recipe = copilot.active_recipe
             steps = recipe.get("steps", [])
             if not steps:
@@ -626,6 +629,9 @@ class CookingCoPilot:
         @track_tool
         async def next_step() -> str:
             """Advance to next recipe step."""
+            if copilot.active_recipe_id is None:
+                return "No recipe selected yet. Please tell me what you'd like to cook, or select a dish from the app."
+            
             recipe = copilot.active_recipe
             steps = recipe.get("steps", [])
             if not steps:
@@ -648,6 +654,9 @@ class CookingCoPilot:
         @track_tool
         async def previous_step() -> str:
             """Go to previous recipe step."""
+            if copilot.active_recipe_id is None:
+                return "No recipe selected yet. Please tell me what you'd like to cook, or select a dish from the app."
+            
             recipe = copilot.active_recipe
             steps = recipe.get("steps", [])
             if not steps:
@@ -670,6 +679,9 @@ class CookingCoPilot:
         @track_tool
         async def repeat_step() -> str:
             """Repeat current step instruction verbatim."""
+            if copilot.active_recipe_id is None:
+                return "No recipe selected yet. Please tell me what you'd like to cook, or select a dish from the app."
+            
             recipe = copilot.active_recipe
             steps = recipe.get("steps", [])
             if not steps:
@@ -690,6 +702,9 @@ class CookingCoPilot:
         @track_tool
         async def get_ingredient_quantity(ingredient_name: str) -> str:
             """Get quantity of an ingredient in active recipe or advise general proportions."""
+            if copilot.active_recipe_id is None:
+                return "No recipe selected yet. Please tell me what you'd like to cook, or select a dish from the app."
+            
             recipe = copilot.active_recipe
             target = ingredient_name.strip().lower()
             for ing in recipe.get("ingredients", []):
@@ -706,6 +721,9 @@ class CookingCoPilot:
         @track_tool
         async def suggest_substitution(ingredient_name: str) -> str:
             """Suggest substitution for an ingredient in active recipe or any general culinary ingredient."""
+            if copilot.active_recipe_id is None:
+                return "No recipe selected yet. Please tell me what you'd like to cook, or select a dish from the app."
+            
             recipe = copilot.active_recipe
             target = ingredient_name.strip().lower()
             
@@ -1079,6 +1097,9 @@ class CookingCoPilot:
         @track_tool
         async def peek_next_step() -> str:
             """Preview what the next step is WITHOUT advancing. Use when user asks 'what's next' but doesn't want to move forward yet."""
+            if copilot.active_recipe_id is None:
+                return "No recipe selected yet. Please tell me what you'd like to cook, or select a dish from the app."
+            
             recipe = copilot.active_recipe
             steps = recipe.get("steps", [])
             if not steps:
@@ -1094,6 +1115,9 @@ class CookingCoPilot:
         @track_tool
         async def jump_to_step(step_number: int) -> str:
             """Jump directly to a specific step number (arbitrary navigation, not just sequential)."""
+            if copilot.active_recipe_id is None:
+                return "No recipe selected yet. Please tell me what you'd like to cook, or select a dish from the app."
+            
             recipe = copilot.active_recipe
             steps = recipe.get("steps", [])
             if not steps:
@@ -1809,6 +1833,11 @@ async def entrypoint(ctx: JobContext):
                         "label": lbl,
                     }))
             elif msg_type == "sync_recipe_state":
+                # Only sync if a recipe is actually loaded
+                if copilot.active_recipe_id is None:
+                    logger.info("[DATA SYNC REQUEST] No recipe loaded - skipping sync")
+                    continue
+                
                 recipe = copilot.active_recipe
                 recipe_steps = recipe.get("steps", [])
                 curr_idx = copilot.current_step_index
@@ -1877,18 +1906,9 @@ async def entrypoint(ctx: JobContext):
                         allow_interruptions=True,
                         add_to_chat_ctx=True,
                     )
-                    # Only broadcast recipe state if a recipe is actually loaded
-                    if copilot.active_recipe_id:
-                        recipe = copilot.active_recipe
-                        steps = recipe.get("steps", [])
-                        await copilot.broadcast({
-                            "type": "recipe_state",
-                            "recipe_id": copilot.active_recipe_id,
-                            "recipe_name": recipe.get("name", ""),
-                            "current_step": copilot.current_step_index,
-                            "total_steps": len(steps),
-                            "instruction": steps[copilot.current_step_index - 1]["instruction"] if steps and copilot.current_step_index > 0 else "",
-                        })
+                    # DO NOT broadcast recipe_state here - UI should stay in empty state
+                    # until user explicitly selects a recipe (via voice or tap)
+                    logger.info("[AGENT GREETING] Generic greeting spoken. No recipe loaded - UI will remain in empty state.")
                 except Exception as e:
                     logger.warning(f"[AGENT GREETING] Greeting notice: {e}")
 

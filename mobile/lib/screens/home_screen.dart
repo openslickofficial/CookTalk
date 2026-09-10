@@ -5,6 +5,7 @@ import '../models/dish.dart';
 import '../services/supabase_service.dart';
 import '../widgets/user_avatar.dart';
 import 'recently_viewed_screen.dart';
+import 'dish_history_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(Dish dish)? onSelectRecipeForCooking;
@@ -857,30 +858,27 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      // RECOMMENDED GRID (2 columns)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 0.75,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                          ),
+                      // RECOMMENDED HORIZONTAL SCROLLABLE ROW
+                      SizedBox(
+                        height: 260,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
                           itemCount: recommendedDishes.length,
                           itemBuilder: (context, index) {
                             final dish = recommendedDishes[index];
                             final isFav = SupabaseService.instance.isFavorite(dish.id);
                             final cookedBefore = SupabaseService.instance.hasCookedBefore(dish.id);
 
-                            return GestureDetector(
-                              onTap: () {
-                                SupabaseService.instance.recordDishViewedInAI(dish.id);
-                                _showRecipePreview(context, dish);
-                              },
-                              child: Container(
+                            return Container(
+                              width: 180,
+                              margin: const EdgeInsets.only(right: 12),
+                              child: GestureDetector(
+                                onTap: () {
+                                  SupabaseService.instance.recordDishViewedInAI(dish.id);
+                                  _showRecipePreview(context, dish);
+                                },
+                                child: Container(
                                 decoration: BoxDecoration(
                                   color: isDark ? const Color(0xFF161A24) : Colors.white,
                                   borderRadius: BorderRadius.circular(16),
@@ -1021,6 +1019,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ],
                                 ),
                               ),
+                            ),
                             );
                           },
                         ),
@@ -1029,6 +1028,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 },
               ),
+
+              const SizedBox(height: 24),
 
               // 6. SECTION: "Cooking History"
               Padding(
@@ -1170,8 +1171,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             margin: const EdgeInsets.only(right: 16),
                             child: GestureDetector(
                               onTap: () {
+                                // Navigate to history detail screen for dishes from history
                                 SupabaseService.instance.recordDishViewedInAI(dish.id);
-                                _showRecipePreview(context, dish);
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => DishHistoryDetailScreen(
+                                      dish: dish,
+                                      onSelectRecipeForCooking: widget.onSelectRecipeForCooking,
+                                    ),
+                                  ),
+                                );
                               },
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,

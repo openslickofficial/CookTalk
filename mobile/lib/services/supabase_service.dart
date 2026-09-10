@@ -101,7 +101,6 @@ class SupabaseService {
                       email: user.email ?? 'user@cooktalk.app',
                       fullName: fullName,
                       avatarUrl: avatarUrl,
-                      onboardingCompleted: _currentProfile?.onboardingCompleted ?? false,
                     );
 
               await _saveLocalProfile(profile);
@@ -113,7 +112,6 @@ class SupabaseService {
                 email: user.email ?? 'user@cooktalk.app',
                 fullName: fullName,
                 avatarUrl: avatarUrl,
-                onboardingCompleted: _currentProfile?.onboardingCompleted ?? false,
               );
               await _saveLocalProfile(profile);
             }
@@ -177,7 +175,12 @@ class SupabaseService {
 
   bool get isAuthenticated => _currentProfile != null;
 
-  bool get hasCompletedOnboarding => _currentProfile?.onboardingCompleted ?? false;
+  /// Check if user has completed preferences (based on data, not a flag)
+  bool get hasCompletedOnboarding {
+    if (_currentProfile == null) return false;
+    // User has completed onboarding if they have set favorite cuisines
+    return _currentProfile!.favoriteCuisines.isNotEmpty;
+  }
 
   /// Social Authentication via Google OAuth with Supabase
   Future<UserProfile?> signInWithGoogle({bool isDemo = false}) async {
@@ -216,7 +219,6 @@ class SupabaseService {
                     email: user.email ?? 'user@cooktalk.app',
                     fullName: fullName,
                     avatarUrl: avatarUrl,
-                    onboardingCompleted: false,
                   );
 
             await _saveLocalProfile(profile);
@@ -228,7 +230,6 @@ class SupabaseService {
               email: user.email ?? 'user@cooktalk.app',
               fullName: fullName,
               avatarUrl: avatarUrl,
-              onboardingCompleted: false,
             );
             await _saveLocalProfile(profile);
             return profile;
@@ -248,7 +249,6 @@ class SupabaseService {
       avatarUrl: SupabaseConfig.getDiceBearAvatar('Samantha'),
       favoriteCuisines: [],
       cookingFrequency: 'A few times a week',
-      onboardingCompleted: false,
     );
     await _saveLocalProfile(profile);
     return profile;
@@ -264,13 +264,12 @@ class SupabaseService {
       avatarUrl: SupabaseConfig.getDiceBearAvatar('Samantha'),
       favoriteCuisines: [],
       cookingFrequency: 'A few times a week',
-      onboardingCompleted: false,
     );
     await _saveLocalProfile(profile);
     return profile;
   }
 
-  /// Update preferences from Onboarding questionnaire
+  /// Update preferences from Preferences screen (cuisines + frequency)
   Future<void> savePreferences({
     required List<String> favoriteCuisines,
     required String cookingFrequency,
@@ -280,7 +279,6 @@ class SupabaseService {
     final updated = _currentProfile!.copyWith(
       favoriteCuisines: favoriteCuisines,
       cookingFrequency: cookingFrequency,
-      onboardingCompleted: true,
     );
 
     if (_isSupabaseInitialized) {

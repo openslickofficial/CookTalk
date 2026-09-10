@@ -16,6 +16,7 @@ import 'screens/onboarding_screen.dart';
 import 'screens/preferences_screen.dart';
 import 'screens/main_nav_screen.dart';
 import 'screens/auth_screen.dart';
+import 'providers/app_state_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

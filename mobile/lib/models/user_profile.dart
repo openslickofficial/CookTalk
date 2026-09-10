@@ -5,7 +5,6 @@ class UserProfile {
   final String avatarUrl;
   final List<String> favoriteCuisines;
   final String cookingFrequency;
-  final bool onboardingCompleted;
   final List<String> allergies;
   final List<String> favorites;
 
@@ -16,17 +15,18 @@ class UserProfile {
     required this.avatarUrl,
     this.favoriteCuisines = const [],
     this.cookingFrequency = 'A few times a week',
-    this.onboardingCompleted = false,
     this.allergies = const [],
     this.favorites = const [],
   });
+
+  // Computed property - not stored in DB
+  bool get onboardingCompleted => favoriteCuisines.isNotEmpty;
 
   UserProfile copyWith({
     String? fullName,
     String? avatarUrl,
     List<String>? favoriteCuisines,
     String? cookingFrequency,
-    bool? onboardingCompleted,
     List<String>? allergies,
     List<String>? favorites,
   }) {
@@ -37,7 +37,6 @@ class UserProfile {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       favoriteCuisines: favoriteCuisines ?? this.favoriteCuisines,
       cookingFrequency: cookingFrequency ?? this.cookingFrequency,
-      onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
       allergies: allergies ?? this.allergies,
       favorites: favorites ?? this.favorites,
     );
@@ -63,7 +62,6 @@ class UserProfile {
           [],
       cookingFrequency:
           json['cooking_frequency'] as String? ?? 'A few times a week',
-      onboardingCompleted: json['onboarding_completed'] as bool? ?? false,
       allergies: (json['allergies'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
@@ -82,7 +80,6 @@ class UserProfile {
         'avatar_url': avatarUrl,
         'favorite_cuisines': favoriteCuisines,
         'cooking_frequency': cookingFrequency,
-        'onboarding_completed': onboardingCompleted,
         'allergies': allergies,
         'favorites': favorites,
       };
