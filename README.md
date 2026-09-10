@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/openslickofficial/CookTalk"><img src="https://img.shields.io/badge/GitHub-Repository-blue?logo=github" alt="GitHub"/></a>
-  <a href="https://drive.google.com/file/d/11XTwtR1rTKgk9ma5avH5wAJ3hb5LtAzk/view?usp=sharing"><img src="https://img.shields.io/badge/Download-APK-green?logo=android" alt="Download APK"/></a>
+  <a href="https://drive.google.com/file/d/1vx4A_ec2Gx8idPv7Bbqd7cJ_cQ1lHOWz/view?usp=sharing"><img src="https://img.shields.io/badge/Download-APK-green?logo=android" alt="Download APK"/></a>
   <a href="https://youtube.com/shorts/hlYmq-do5Sc?feature=share"><img src="https://img.shields.io/badge/Watch-Demo%20Video-red?logo=youtube" alt="YouTube Demo"/></a>
 </p>
 
@@ -19,7 +19,7 @@ CookTalk eliminates the awkward pause in voice AI by orchestrating an ultra-low-
 ## 🔗 Quick Links
 
 - **🐙 GitHub Repository**: [https://github.com/openslickofficial/CookTalk](https://github.com/openslickofficial/CookTalk)
-- **📱 Download Android APK**: [Google Drive](https://drive.google.com/file/d/11XTwtR1rTKgk9ma5avH5wAJ3hb5LtAzk/view?usp=sharing)
+- **📱 Download Android APK**: [Google Drive](https://drive.google.com/file/d/1vx4A_ec2Gx8idPv7Bbqd7cJ_cQ1lHOWz/view?usp=sharing)
 - **🎥 Demo Video**: [Watch on YouTube](https://youtube.com/shorts/hlYmq-do5Sc?feature=share)
 
 ---
