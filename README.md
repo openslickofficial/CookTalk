@@ -6,8 +6,8 @@
 
 <p align="center">
   <a href="https://github.com/openslickofficial/CookTalk"><img src="https://img.shields.io/badge/GitHub-Repository-blue?logo=github" alt="GitHub"/></a>
-  <a href="https://github.com/openslickofficial/CookTalk/releases/latest/download/app-release.apk"><img src="https://img.shields.io/badge/Download-APK-green?logo=android" alt="Download APK"/></a>
-  <a href="YOUR_YOUTUBE_VIDEO_LINK_HERE"><img src="https://img.shields.io/badge/Watch-Demo%20Video-red?logo=youtube" alt="YouTube Demo"/></a>
+  <a href="https://drive.google.com/file/d/11XTwtR1rTKgk9ma5avH5wAJ3hb5LtAzk/view?usp=sharing"><img src="https://img.shields.io/badge/Download-APK-green?logo=android" alt="Download APK"/></a>
+  <a href="https://youtube.com/shorts/hlYmq-do5Sc?feature=share"><img src="https://img.shields.io/badge/Watch-Demo%20Video-red?logo=youtube" alt="YouTube Demo"/></a>
 </p>
 
 A hands-free, voice-first culinary assistant designed for busy, messy kitchens. Built for the **DataForge × Rime Hackathon** (Track: *"Perceived Response Time"*).
@@ -19,8 +19,8 @@ CookTalk eliminates the awkward pause in voice AI by orchestrating an ultra-low-
 ## 🔗 Quick Links
 
 - **🐙 GitHub Repository**: [https://github.com/openslickofficial/CookTalk](https://github.com/openslickofficial/CookTalk)
-- **📱 Download Android APK**: [Latest Release](https://github.com/openslickofficial/CookTalk/releases/latest/download/app-release.apk)
-- **🎥 Demo Video**: [Watch on YouTube](YOUR_YOUTUBE_VIDEO_LINK_HERE)
+- **📱 Download Android APK**: [Google Drive](https://drive.google.com/file/d/11XTwtR1rTKgk9ma5avH5wAJ3hb5LtAzk/view?usp=sharing)
+- **🎥 Demo Video**: [Watch on YouTube](https://youtube.com/shorts/hlYmq-do5Sc?feature=share)
 
 ---
 
