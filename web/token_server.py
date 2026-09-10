@@ -149,7 +149,7 @@ def create_token(
     }
 
 @app.post("/api/generate-dish")
-def generate_dish(req: GenerateDishRequest):
+async def generate_dish(req: GenerateDishRequest):
     raw_query = req.dish_name.strip()
     if not raw_query:
         raise HTTPException(status_code=400, detail="dish_name cannot be empty")
@@ -251,9 +251,9 @@ def generate_dish(req: GenerateDishRequest):
 
     user_prompt = f"Develop a complete, reliable recipe for: '{raw_query}'."
 
-    def _call_groq(messages):
-        with httpx.Client(timeout=25.0) as client:
-            resp = client.post(
+    async def _call_groq(messages):
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            resp = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -276,7 +276,7 @@ def generate_dish(req: GenerateDishRequest):
     ]
 
     try:
-        response = _call_groq(messages)
+        response = await _call_groq(messages)
         if response.status_code != 200:
             raise RuntimeError(f"Groq API error {response.status_code}: {response.text}")
         content = response.json()["choices"][0]["message"]["content"].strip()
@@ -288,7 +288,7 @@ def generate_dish(req: GenerateDishRequest):
                 {"role": "system", "content": "You are a JSON repair tool. Return strictly valid JSON."},
                 {"role": "user", "content": f"Fix and complete this recipe JSON for '{raw_query}': {first_err}"},
             ]
-            response = _call_groq(repair_messages)
+            response = await _call_groq(repair_messages)
             if response.status_code == 200:
                 content = response.json()["choices"][0]["message"]["content"].strip()
                 parsed_json = json.loads(content)
@@ -351,15 +351,19 @@ def generate_dish(req: GenerateDishRequest):
     
     # FETCH DYNAMIC IMAGE: Try to get a real dish-specific image
     try:
-        from image_service import get_dish_image, get_cached_image_url
+        try:
+            from web.image_service import get_dish_image, get_cached_image_url
+        except ImportError:
+            from image_service import get_dish_image, get_cached_image_url
+
         # Async fetch with timeout - if it fails, use fallback
         try:
             dish_payload["image_url"] = await asyncio.wait_for(
                 get_dish_image(title, dish_payload["category"]),
                 timeout=3.0
             )
-        except asyncio.TimeoutError:
-            # Timeout - use category fallback
+        except Exception:
+            # Timeout or API error - use category fallback
             dish_payload["image_url"] = get_cached_image_url(dish_id, dish_payload["category"])
     except ImportError:
         # image_service not available - use category-specific fallback

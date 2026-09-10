@@ -1836,7 +1836,7 @@ async def entrypoint(ctx: JobContext):
                 # Only sync if a recipe is actually loaded
                 if copilot.active_recipe_id is None:
                     logger.info("[DATA SYNC REQUEST] No recipe loaded - skipping sync")
-                    continue
+                    return
                 
                 recipe = copilot.active_recipe
                 recipe_steps = recipe.get("steps", [])
