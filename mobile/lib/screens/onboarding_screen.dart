@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'auth_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({super.key});
+  final VoidCallback? onFinish;
+  
+  const OnboardingScreen({super.key, this.onFinish});
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -40,6 +42,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   ];
 
   void _onFinish() {
+    // Call the onFinish callback to mark onboarding as seen
+    widget.onFinish?.call();
+    
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const AuthScreen()),
     );

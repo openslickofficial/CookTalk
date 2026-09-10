@@ -22,8 +22,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedCategory = 'all';
   List<Dish> _dishes = [];
   List<Dish> _recentAiDishes = [];
+  List<Dish> _recentlyViewedDishes = [];
   List<String> _staticDishNames = [];
   bool _isLoading = true;
+  String? _errorMessage;
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -36,6 +38,71 @@ class _HomeScreenState extends State<HomeScreen> {
     SupabaseService.instance.cookHistoryNotifier.addListener(_loadDishes);
   }
 
+  List<Dish> _getRecommendedDishes() {
+    final user = SupabaseService.instance.currentUser;
+    final currentUserId = SupabaseService.instance.currentUser?.id;
+    
+    // Filter: only verified recipes (AI dishes excluded for cross-user safety)
+    // NOTE: dishes table lacks user_id column, so we cannot safely distinguish
+    // current user's AI dishes from others'. Conservative approach: verified only.
+    final eligibleDishes = _dishes.where((dish) => dish.verified).toList();
+    
+    // Get dishes user has cooked before by checking hasCookedBefore for each
+    final cookedDishes = _dishes.where((d) => SupabaseService.instance.hasCookedBefore(d.id)).toList();
+    
+    if (cookedDishes.isEmpty) {
+      // Cold start: filter by favorite cuisines from onboarding
+      if (user != null && user.favoriteCuisines.isNotEmpty) {
+        final matchingCuisine = eligibleDishes.where((dish) {
+          return user.favoriteCuisines.any((favCuisine) =>
+              dish.cuisine.toLowerCase().contains(favCuisine.toLowerCase()) ||
+              favCuisine.toLowerCase().contains(dish.cuisine.toLowerCase()));
+        }).toList();
+        
+        if (matchingCuisine.isNotEmpty) {
+          // Sort by is_trending as secondary signal
+          matchingCuisine.sort((a, b) {
+            if (a.isTrending && !b.isTrending) return -1;
+            if (!a.isTrending && b.isTrending) return 1;
+            return 0;
+          });
+          return matchingCuisine.take(8).toList();
+        }
+      }
+      
+      // Fallback: all verified dishes, trending first
+      eligibleDishes.sort((a, b) {
+        if (a.isTrending && !b.isTrending) return -1;
+        if (!a.isTrending && b.isTrending) return 1;
+        return 0;
+      });
+      return eligibleDishes.take(8).toList();
+    }
+    
+    // Returning user: rank by cuisine/category overlap with cook_history
+    final cookedDishIds = cookedDishes.map((d) => d.id).toSet();
+    
+    // Count cuisine/category frequency in cook history
+    final cuisineCount = <String, int>{};
+    final categoryCount = <String, int>{};
+    for (final dish in cookedDishes) {
+      cuisineCount[dish.cuisine.toLowerCase()] = (cuisineCount[dish.cuisine.toLowerCase()] ?? 0) + 1;
+      categoryCount[dish.category.toLowerCase()] = (categoryCount[dish.category.toLowerCase()] ?? 0) + 1;
+    }
+    
+    // Score each eligible dish based on cuisine/category overlap
+    final scoredDishes = eligibleDishes.map((dish) {
+      int score = 0;
+      score += (cuisineCount[dish.cuisine.toLowerCase()] ?? 0) * 3; // Cuisine match weighted higher
+      score += (categoryCount[dish.category.toLowerCase()] ?? 0) * 2; // Category match
+      if (dish.isTrending) score += 1; // is_trending as tiebreaker
+      return {'dish': dish, 'score': score};
+    }).toList();
+    
+    scoredDishes.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+    return scoredDishes.map((s) => s['dish'] as Dish).take(8).toList();
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -45,17 +112,38 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadDishes() async {
-    setState(() => _isLoading = true);
-    final dishes = await SupabaseService.instance.fetchDishes();
-    final recentAi = await SupabaseService.instance.fetchRecentlyViewedAIDishes();
-    final staticNames = await SupabaseService.instance.loadStaticDishNames();
-    if (mounted) {
-      setState(() {
-        _dishes = dishes;
-        _recentAiDishes = recentAi;
-        _staticDishNames = staticNames;
-        _isLoading = false;
-      });
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final dishes = await SupabaseService.instance.fetchDishes();
+      final recentAi = await SupabaseService.instance.fetchRecentlyViewedAIDishes();
+      final staticNames = await SupabaseService.instance.loadStaticDishNames();
+      
+      // Get recently viewed dishes - fixed to 6 items
+      final recentViewed = recentAi.take(6).toList();
+      
+      if (mounted) {
+        setState(() {
+          _dishes = dishes;
+          _recentAiDishes = recentAi;
+          _recentlyViewedDishes = recentViewed;
+          _staticDishNames = staticNames;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[HomeScreen] Error loading dishes: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Couldn\'t load dishes. Please try again.';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -224,7 +312,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final user = SupabaseService.instance.currentUser;
-    final userName = user?.fullName ?? 'Samantha';
+    final fullName = user?.fullName ?? 'Samantha';
+    // Extract first name and capitalize first letter
+    final firstName = fullName.split(' ').first.trim();
+    final userName = firstName.isEmpty 
+        ? 'Samantha' 
+        : firstName[0].toUpperCase() + firstName.substring(1).toLowerCase();
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0F12) : const Color(0xFFF9FAF7),
@@ -272,6 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
+
                   ],
                 ),
               ),
@@ -535,7 +629,408 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 12),
 
-              // 4. SECTION: "Cooking History"
+              // 4. SECTION: "Recently Viewed"
+              if (_recentlyViewedDishes.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Recently Viewed',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: isDark ? Colors.white : const Color(0xFF143826),
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Dishes you recently explored',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // RECENTLY VIEWED HORIZONTAL CAROUSEL
+                SizedBox(
+                  height: 140,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: _recentlyViewedDishes.length,
+                    itemBuilder: (context, index) {
+                      final dish = _recentlyViewedDishes[index];
+                      final isFav = SupabaseService.instance.isFavorite(dish.id);
+
+                      return Container(
+                        width: 280,
+                        margin: const EdgeInsets.only(right: 12),
+                        child: GestureDetector(
+                          onTap: () {
+                            SupabaseService.instance.recordDishViewedInAI(dish.id);
+                            _showRecipePreview(context, dish);
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF161A24) : Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8),
+                                width: 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                // Dish Image
+                                ClipRRect(
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(16),
+                                    bottomLeft: Radius.circular(16),
+                                  ),
+                                  child: Image.network(
+                                    dish.imageUrl,
+                                    width: 110,
+                                    height: 140,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Container(
+                                      width: 110,
+                                      height: 140,
+                                      color: Colors.grey[300],
+                                      child: const Icon(Icons.restaurant, size: 30),
+                                    ),
+                                  ),
+                                ),
+                                
+                                // Dish Info
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            // Title
+                                            Text(
+                                              dish.title,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w800,
+                                                color: isDark ? Colors.white : const Color(0xFF143826),
+                                                height: 1.3,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            // Cuisine
+                                            Text(
+                                              dish.cuisine,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        
+                                        // Bottom row: Time + Favorite
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            // Time badge
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: isDark 
+                                                    ? const Color(0xFF263042) 
+                                                    : const Color(0xFFF5F7F4),
+                                                borderRadius: BorderRadius.circular(10),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.schedule_rounded,
+                                                    size: 11,
+                                                    color: isDark 
+                                                        ? const Color(0xFFD2E68B) 
+                                                        : const Color(0xFF7D9344),
+                                                  ),
+                                                  const SizedBox(width: 3),
+                                                  Text(
+                                                    '${dish.totalTimeMinutes} min',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: isDark ? Colors.white : const Color(0xFF143826),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            
+                                            // Favorite heart
+                                            GestureDetector(
+                                              onTap: () {
+                                                setState(() {
+                                                  SupabaseService.instance.toggleFavorite(dish.id);
+                                                });
+                                              },
+                                              child: Icon(
+                                                isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                                color: isFav ? const Color(0xFFEF4444) : (isDark ? Colors.white38 : Colors.black26),
+                                                size: 20,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+              ],
+
+              // 5. SECTION: "Recommended"
+              Builder(
+                builder: (context) {
+                  final recommendedDishes = _getRecommendedDishes();
+                  if (recommendedDishes.isEmpty) return const SizedBox.shrink();
+                  
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Recommended',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: isDark ? Colors.white : const Color(0xFF143826),
+                                letterSpacing: -0.4,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Personalized picks based on your tastes',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      // RECOMMENDED GRID (2 columns)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 0.75,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                          ),
+                          itemCount: recommendedDishes.length,
+                          itemBuilder: (context, index) {
+                            final dish = recommendedDishes[index];
+                            final isFav = SupabaseService.instance.isFavorite(dish.id);
+                            final cookedBefore = SupabaseService.instance.hasCookedBefore(dish.id);
+
+                            return GestureDetector(
+                              onTap: () {
+                                SupabaseService.instance.recordDishViewedInAI(dish.id);
+                                _showRecipePreview(context, dish);
+                              },
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF161A24) : Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: isDark ? const Color(0xFF263042) : const Color(0xFFECEFE8),
+                                    width: 1,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Image with badges overlay
+                                    Stack(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                                          child: Image.network(
+                                            dish.imageUrl,
+                                            width: double.infinity,
+                                            height: 140,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) => Container(
+                                              width: double.infinity,
+                                              height: 140,
+                                              color: Colors.grey[300],
+                                              child: const Icon(Icons.restaurant, size: 40),
+                                            ),
+                                          ),
+                                        ),
+                                        // Top-right badges
+                                        Positioned(
+                                          top: 8,
+                                          right: 8,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              if (dish.verified)
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFF10B981),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: const Text(
+                                                    'Verified',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ),
+                                              if (cookedBefore) ...[
+                                                const SizedBox(height: 4),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFD2E68B),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: const Text(
+                                                    'Cooked before',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: Color(0xFF143826),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    // Dish info
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  dish.title,
+                                                  maxLines: 2,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w800,
+                                                    color: isDark ? Colors.white : const Color(0xFF143826),
+                                                    height: 1.3,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  dish.cuisine,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.schedule_rounded,
+                                                  size: 14,
+                                                  color: isDark ? Colors.white54 : const Color(0xFF64748B),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  '${dish.totalTimeMinutes} min',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+
+              // 6. SECTION: "Cooking History"
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
@@ -589,18 +1084,86 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 14),
 
-              // 6. RECENTLY VIEWED IN AI HORIZONTAL CAROUSEL
+              // 7. RECENTLY VIEWED IN AI HORIZONTAL CAROUSEL
               SizedBox(
-                height: 320,
+                height: (_recentAiDishes.isEmpty && _dishes.isEmpty && !_isLoading) ? 180 : 320,
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: _recentAiDishes.isNotEmpty ? _recentAiDishes.length : _dishes.length,
-                        itemBuilder: (context, index) {
-                          final dish = _recentAiDishes.isNotEmpty ? _recentAiDishes[index] : _dishes[index];
-                          final isFav = SupabaseService.instance.isFavorite(dish.id);
+                    : _errorMessage != null
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.error_outline_rounded,
+                                    size: 48,
+                                    color: isDark ? Colors.red.shade300 : Colors.red.shade700,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    _errorMessage!,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: isDark ? Colors.white70 : Colors.black54,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextButton.icon(
+                                    onPressed: _loadDishes,
+                                    icon: const Icon(Icons.refresh_rounded),
+                                    label: const Text('Try Again'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: isDark ? const Color(0xFFD2E68B) : const Color(0xFF143826),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : (_recentAiDishes.isEmpty && _dishes.isEmpty)
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.history_rounded,
+                                    size: 48,
+                                    color: isDark ? Colors.white24 : Colors.black12,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No Cooking History Yet',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark ? Colors.white70 : Colors.black54,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Start cooking with AI or explore recipes\nto see your history here',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark ? Colors.white54 : Colors.black38,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            itemCount: _recentAiDishes.isNotEmpty ? _recentAiDishes.length : _dishes.length,
+                            itemBuilder: (context, index) {
+                              final dish = _recentAiDishes.isNotEmpty ? _recentAiDishes[index] : _dishes[index];
+                              final isFav = SupabaseService.instance.isFavorite(dish.id);
 
                           return Container(
                             width: 230,
@@ -1175,7 +1738,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                         ),
-                        const Text('✨', style: TextStyle(fontSize: 14)),
+                        const Icon(Icons.auto_awesome, color: Colors.amber, size: 16),
                       ],
                     ),
                   ),

@@ -7,6 +7,7 @@ class UserProfile {
   final String cookingFrequency;
   final bool onboardingCompleted;
   final List<String> allergies;
+  final List<String> favorites;
 
   const UserProfile({
     required this.id,
@@ -17,6 +18,7 @@ class UserProfile {
     this.cookingFrequency = 'A few times a week',
     this.onboardingCompleted = false,
     this.allergies = const [],
+    this.favorites = const [],
   });
 
   UserProfile copyWith({
@@ -26,6 +28,7 @@ class UserProfile {
     String? cookingFrequency,
     bool? onboardingCompleted,
     List<String>? allergies,
+    List<String>? favorites,
   }) {
     return UserProfile(
       id: id,
@@ -36,6 +39,7 @@ class UserProfile {
       cookingFrequency: cookingFrequency ?? this.cookingFrequency,
       onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
       allergies: allergies ?? this.allergies,
+      favorites: favorites ?? this.favorites,
     );
   }
 
@@ -64,6 +68,10 @@ class UserProfile {
               ?.map((e) => e.toString())
               .toList() ??
           [],
+      favorites: (json['favorites'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
     );
   }
 
@@ -76,5 +84,6 @@ class UserProfile {
         'cooking_frequency': cookingFrequency,
         'onboarding_completed': onboardingCompleted,
         'allergies': allergies,
+        'favorites': favorites,
       };
 }

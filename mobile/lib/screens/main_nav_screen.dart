@@ -4,7 +4,7 @@ import '../main.dart';
 import '../models/dish.dart';
 import 'home_screen.dart';
 import 'favorites_screen.dart';
-import 'recently_viewed_screen.dart';
+import 'dishes_screen.dart';
 import 'profile_screen.dart';
 
 class MainNavScreen extends StatefulWidget {
@@ -21,8 +21,8 @@ class _MainNavScreenState extends State<MainNavScreen> {
     // Production token server on Render.com
     final host = 'https://cooltalk-token-server.onrender.com';
     
-    // If no dish is selected, create a generic session where LLM will ask for the dish
-    final targetRecipe = dish != null
+    // If no dish is selected, pass null to show proper empty state
+    final RecipeItem? targetRecipe = dish != null
         ? RecipeItem(
             id: dish.slug,
             name: dish.title,
@@ -33,14 +33,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
             steps: dish.steps.map((s) => {'step': s.step, 'instruction': s.instruction}).toList(),
             ingredients: dish.ingredients.map((i) => {'name': i.name, 'quantity': i.quantity, 'unit': i.unit}).toList(),
           )
-        : const RecipeItem(
-            id: 'open-session',
-            name: 'Open Cooking Session',
-            description: 'Start a voice session to select and cook any recipe',
-            totalSteps: 0,
-            verified: false,
-            source: 'open',
-          );
+        : null;
 
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -57,7 +50,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
     final pages = [
       HomeScreen(onSelectRecipeForCooking: _launchCookingSession),
       FavoritesScreen(onSelectRecipeForCooking: _launchCookingSession),
-      RecentlyViewedScreen(onSelectRecipeForCooking: _launchCookingSession),
+      DishesScreen(onSelectRecipeForCooking: _launchCookingSession),
       ProfileScreen(appThemeMode: appThemeMode),
     ];
 
@@ -136,10 +129,10 @@ class _MainNavScreenState extends State<MainNavScreen> {
                       ),
                     ),
 
-                    // Tab 2: Recently Viewed (Clock/History icon)
+                    // Tab 2: Dishes (Grid icon)
                     _buildNavButton(
                       index: 2,
-                      icon: Icons.history_rounded,
+                      icon: Icons.restaurant_rounded,
                       isActive: _currentTab == 2,
                     ),
 

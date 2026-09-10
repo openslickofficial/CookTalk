@@ -94,7 +94,7 @@ cd agent
 
 | Pipeline Component | Phase 1: Naive HTTP Baseline (`/control`) | LiveKit + Rime WebSocket (`/ws3`) | Measured Speedup |
 | :--- | :--- | :--- | :--- |
-| **TTS Time-to-First-Audio (TTFB)** | **3,578.0 ms** (Wait for full monolithic WAV) | **388.2 ms** (Rime WS First Chunk, $n=131$ median) | **9.22x faster** |
+| **TTS Time-to-First-Audio (TTFB)** | **3,578.0 ms** (Wait for full monolithic WAV) | **386.0 ms** (Median from 24 clean trials in `demo_script_benchmark_results.jsonl`) | **9.27x faster** |
 | **TTS P95 TTFB** | ~4,200.0 ms | **1,548.6 ms** | **2.71x faster** |
 | **Audio Transport Protocol** | HTTP REST POST (`/v1/tts`) | WebSocket binary stream (`/ws3`) | Persistent binary framing |
 | **Output Sample Rate** | 22,050 Hz | 24,000 Hz PCM 16-bit | Studio broadcast quality |

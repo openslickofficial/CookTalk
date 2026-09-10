@@ -83,9 +83,12 @@ CREATE POLICY "Users can insert their own profile"
 CREATE POLICY "Users can update their own profile" 
     ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
--- Dishes: Anyone can read dishes; only admins can modify
+-- Dishes: Anyone can read dishes; authenticated users can insert (AI-generated dishes)
 CREATE POLICY "Dishes are viewable by everyone" 
     ON public.dishes FOR SELECT USING (true);
+
+CREATE POLICY "Authenticated users can insert dishes" 
+    ON public.dishes FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- Cooking History: Users can view, insert, update their own history
 CREATE POLICY "Users can view own cooking history" 

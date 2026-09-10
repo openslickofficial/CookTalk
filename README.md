@@ -1,8 +1,26 @@
 # CookTalk — Real-Time Hands-Free Cooking Co-Pilot
 
+<p align="center">
+  <img src="app_icon.png" alt="CookTalk Icon" width="120"/>
+</p>
+
+<p align="center">
+  <a href="https://github.com/openslickofficial/CookTalk"><img src="https://img.shields.io/badge/GitHub-Repository-blue?logo=github" alt="GitHub"/></a>
+  <a href="https://github.com/openslickofficial/CookTalk/releases/latest/download/app-release.apk"><img src="https://img.shields.io/badge/Download-APK-green?logo=android" alt="Download APK"/></a>
+  <a href="YOUR_YOUTUBE_VIDEO_LINK_HERE"><img src="https://img.shields.io/badge/Watch-Demo%20Video-red?logo=youtube" alt="YouTube Demo"/></a>
+</p>
+
 A hands-free, voice-first culinary assistant designed for busy, messy kitchens. Built for the **DataForge × Rime Hackathon** (Track: *"Perceived Response Time"*).
 
 CookTalk eliminates the awkward pause in voice AI by orchestrating an ultra-low-latency pipeline combining **Silero VAD**, **Deepgram STT (`nova-3`)**, **Groq LLM (`qwen/qwen3.8-27b`)**, and **Rime TTS (`coda` / `astra`)** over persistent WebSockets inside **LiveKit WebRTC**.
+
+---
+
+## 🔗 Quick Links
+
+- **🐙 GitHub Repository**: [https://github.com/openslickofficial/CookTalk](https://github.com/openslickofficial/CookTalk)
+- **📱 Download Android APK**: [Latest Release](https://github.com/openslickofficial/CookTalk/releases/latest/download/app-release.apk)
+- **🎥 Demo Video**: [Watch on YouTube](YOUR_YOUTUBE_VIDEO_LINK_HERE)
 
 ---
 
@@ -115,7 +133,7 @@ CookTalk includes a **Flutter mobile app** (Android) providing the same hands-fr
 
 ## 4. Empirical Performance Summary
 
-CookTalk is **~8% faster end-to-end (5,859.3 ms vs. 6,335.6 ms naive HTTP baseline)** across realistic, tool-assisted culinary turns in the kitchen. Behind this overall speedup is a **9.27x component-level synthesis speedup (386.0 ms vs. 3,578.0 ms TTFB)** that eliminated Rime TTS as the pipeline bottleneck, shifting the remaining latency to upstream LLM reasoning and safety-critical VAD endpointing.
+CookTalk is **~8% faster end-to-end (5,859.3 ms vs. 6,335.6 ms naive HTTP baseline)** across realistic, tool-assisted culinary turns in the kitchen. Behind this overall speedup is a **9.27x component-level synthesis speedup (386.0 ms vs. 3,578.0 ms TTFB, median from 24 clean trials in `agent/bench/demo_script_benchmark_results.jsonl`)** that eliminated Rime TTS as the pipeline bottleneck, shifting the remaining latency to upstream LLM reasoning and safety-critical VAD endpointing.
 
 Detailed evidence, procedures, diagnostic traces, and trial breakdowns are documented in [`RIME_EVIDENCE.md`](./RIME_EVIDENCE.md) and [`docs/timeout-diagnosis.md`](./docs/timeout-diagnosis.md).
 
@@ -123,7 +141,7 @@ Detailed evidence, procedures, diagnostic traces, and trial breakdowns are docum
 
 | Metric | Phase 1: Naive HTTP (`/control`) | Phase 2: Server Proxy (`/agent`) | Phase 3.8: Rapid Burst (`n=30`) | Phase 6 Part A: Idle Sweep (`n=24`) | Phase 6.9: Final Demo Script Benchmark |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TTS Time-to-First-Audio (TTFB)** | 3,578.0 ms (Full WAV) | **389.1 ms** (First Chunk) | **506.2 ms** (First Chunk) | **388.2 ms** (`WarmRimeTTS` 60s idle) | **386.0 ms** ($n=24$ clean median) |
+| **TTS Time-to-First-Audio (TTFB)** | 3,578.0 ms (Full WAV) | **389.1 ms** (First Chunk) | **506.2 ms** (First Chunk) | **388.2 ms** (`WarmRimeTTS` 60s idle) | **386.0 ms** (Median, $n=24$ clean trials from `demo_script_benchmark_results.jsonl`) |
 | **Client First-Audio Latency (Median)**| 6,335.6 ms | **1,767.2 ms** (Server Sum) | **4,512.7 ms** | **4,238.5 ms** (20s gap) | **4,740.7 ms** (Spoken Ack first sound) |
 | **Client Substantive Answer (Median)** | 6,335.6 ms | **1,767.2 ms** (Server Sum) | **4,512.7 ms** | **4,260.4 ms** | **4,924.4 ms** (Grounded culinary reply) |
 | **TTS Component Speedup** | *Baseline* | **9.19x faster** | **7.07x faster** | **9.22x faster** | **9.27x faster** |
@@ -179,7 +197,7 @@ Across Phases 3.5 through 6.9, we diagnosed and eliminated harness timeout vulne
    - Enforced 1-2 sentence responses and conversational multi-item truncation in `agent.py`, dropping median turn duration to 5,859.3 ms.
 7. **Grounded Culinary Features (Phase 4)**:
    - Grounded recipe knowledge (`agent/recipes.json`) covering French Scrambled Eggs, Cacio e Pepe, and Reverse-Sear Ribeye Steak.
-   - 9 asynchronous LiveKit tools with verbatim step repetition (`repeat_step`) to prevent recipe drift.
+   - 17 asynchronous LiveKit function tools including step navigation, ingredient queries, substitutions, allergy checks, multi-timer support, and session management (NOTE: pause_timer/resume_timer NOT implemented).
    - Proactive WebRTC timer countdown alerts generated via Rime TTS `copilot.session.say(...)` without user prompting.
 8. **Audible Fallback Behavior**:
    - If Rime is unreachable or credentials fail, `FallbackAdapter` seamlessly switches to `LocalFallbackTTS` and speaks a pre-recorded emergency audio notice over WebRTC in **1,256.6 ms**.
@@ -310,7 +328,7 @@ In compliance with hackathon guidelines:
   - *AI-Assisted*: Implemented `DynamicGroqConnectOptions` parsing upstream `Retry-After` reset hints, configured dynamic backoff ceiling for conversational voice flow, separated call completion from question answering in logs and reports.
   - *Human-Verified*: Validated live Groq model catalog (`docs/groq-models-verified.json`), re-ran 30-trial benchmark verifying 100% call stability (0 hangs), 90.0% question answered rate (27/30), and 10.0% fallback apology (3/30).
 - **Phase 4 (Product Work: Culinary Persona, Function Calling & Acceptance Verification)**:
-  - *AI-Assisted*: Structured culinary database (`recipes.json`), built stateful `CookingCoPilot` with 8 LiveKit asynchronous function tools, built proactive WebRTC timer alert via Rime TTS `copilot.session.say(...)`, created automated acceptance test runner (`run_acceptance_test.py`).
+  - *AI-Assisted*: Structured culinary database (`recipes.json`), built stateful `CookingCoPilot` with 17 LiveKit asynchronous function tools (pause_timer/resume_timer not implemented), built proactive WebRTC timer alert via Rime TTS `copilot.session.say(...)`, created automated acceptance test runner (`run_acceptance_test.py`).
   - *Human-Verified*: Executed 7 live voice acceptance scenarios against LiveKit Cloud WebRTC, verified 7 / 7 (100%) PASS with verbatim grounded answers, confirmed proactive spoken timer alert over WebRTC audio track, spot-checked pipeline latency showing zero tool-calling regression.
 - **Phase 5 (Custom Web Frontend & Smoke Verification)**:
   - *AI-Assisted*: Scaffolding React/Vite web application with Lucide icons and Tailwind-like styling, implementing LiveKit WebRTC client hooks, live audio waveform visualizer, real-time Latency HUD with component breakdown, recipe card navigator, and active kitchen timer widget; creating `web/token_server.py`.
@@ -320,3 +338,32 @@ In compliance with hackathon guidelines:
   - *Human-Verified*: Verified 73–75% TTFB speedup across 30s–60s idle gaps, confirmed 0 secrets in git history, verified live Rime voice catalog endpoint, audited documentation consistency.
 
 
+
+
+---
+
+## Implementation Notes
+
+### cook_history Dual-Write Pattern (INTENTIONAL)
+
+The `cook_history` table is written at **two distinct locations** with different triggers. This is **intentional** to support both discovery and session tracking:
+
+1. **Dish View/Tap** (`mobile/lib/screens/home_screen.dart:680, 881, 1174`)
+   - Trigger: User taps dish card to preview recipe
+   - Purpose: Track "Recently Viewed" for discovery/navigation
+   - Alias: `recordDishViewedInAI()` → `recordCookHistory()`
+
+2. **Session Start** (`mobile/lib/main.dart:1009`)
+   - Trigger: User starts live cooking session (InSessionScreen initState)
+   - Purpose: Mark dish as "Cooked before" + populate cook_history for ranking
+   - Implementation: `await SupabaseService.instance.recordCookHistory(widget.initialRecipe.id);`
+
+**Deduplication**: `userList.removeWhere((h) => h.dishId == dishId)` in `recordCookHistory()` prevents duplicates.
+
+**Database**: Supabase `upsert` is idempotent based on `(user_id, dish_id)` composite.
+
+**Rationale**: 
+- Viewing a recipe != cooking it, but both are useful signals
+- "Recently Viewed" shows discovery patterns
+- Session start definitively marks intent to cook
+- Same method ensures consistent timestamp updates

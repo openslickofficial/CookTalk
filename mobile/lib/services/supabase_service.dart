@@ -86,17 +86,40 @@ class SupabaseService {
                 ? rawAvatar
                 : SupabaseConfig.getDiceBearAvatar(fullName);
 
-            final profile = UserProfile(
-              id: user.id,
-              email: user.email ?? 'user@cooktalk.app',
-              fullName: fullName,
-              avatarUrl: avatarUrl,
-              onboardingCompleted: _currentProfile?.onboardingCompleted ?? false,
-            );
-            await _saveLocalProfile(profile);
-            debugPrint('[SupabaseService] OAuth user signed in: ${profile.fullName}');
+            // Fetch full profile from Supabase to get favorites
+            try {
+              final profileData = await Supabase.instance.client
+                  .from('profiles')
+                  .select()
+                  .eq('id', user.id)
+                  .maybeSingle();
+
+              final profile = profileData != null
+                  ? UserProfile.fromJson(profileData)
+                  : UserProfile(
+                      id: user.id,
+                      email: user.email ?? 'user@cooktalk.app',
+                      fullName: fullName,
+                      avatarUrl: avatarUrl,
+                      onboardingCompleted: _currentProfile?.onboardingCompleted ?? false,
+                    );
+
+              await _saveLocalProfile(profile);
+              debugPrint('[SupabaseService] OAuth user signed in: ${profile.fullName}');
+            } catch (e) {
+              debugPrint('[SupabaseService] Failed to fetch profile, using basic info: $e');
+              final profile = UserProfile(
+                id: user.id,
+                email: user.email ?? 'user@cooktalk.app',
+                fullName: fullName,
+                avatarUrl: avatarUrl,
+                onboardingCompleted: _currentProfile?.onboardingCompleted ?? false,
+              );
+              await _saveLocalProfile(profile);
+            }
           } else if (event == AuthChangeEvent.signedOut) {
             _currentProfile = null;
+            _favoriteIds.clear();
             authStateNotifier.value = null;
           }
         });
@@ -123,6 +146,8 @@ class SupabaseService {
         if (profileJson != null) {
           _currentProfile = UserProfile.fromJson(jsonDecode(profileJson));
           authStateNotifier.value = _currentProfile;
+          // Load favorites from profile
+          _loadFavoritesFromProfile();
         }
         _rimeVoiceStyle = prefs.getString('cooktalk_rime_voice') ?? 'Astra';
         _isMetric = prefs.getBool('cooktalk_is_metric') ?? true;
@@ -136,6 +161,8 @@ class SupabaseService {
   Future<void> _saveLocalProfile(UserProfile profile) async {
     _currentProfile = profile;
     authStateNotifier.value = profile;
+    // Load favorites from profile
+    _loadFavoritesFromProfile();
     try {
       final prefs = await _getPrefs();
       if (prefs != null) {
@@ -174,15 +201,38 @@ class SupabaseService {
               ? rawAvatar
               : SupabaseConfig.getDiceBearAvatar(fullName);
 
-          final profile = UserProfile(
-            id: user.id,
-            email: user.email ?? 'user@cooktalk.app',
-            fullName: fullName,
-            avatarUrl: avatarUrl,
-            onboardingCompleted: false,
-          );
-          await _saveLocalProfile(profile);
-          return profile;
+          // Try to fetch existing profile with favorites
+          try {
+            final profileData = await Supabase.instance.client
+                .from('profiles')
+                .select()
+                .eq('id', user.id)
+                .maybeSingle();
+
+            final profile = profileData != null
+                ? UserProfile.fromJson(profileData)
+                : UserProfile(
+                    id: user.id,
+                    email: user.email ?? 'user@cooktalk.app',
+                    fullName: fullName,
+                    avatarUrl: avatarUrl,
+                    onboardingCompleted: false,
+                  );
+
+            await _saveLocalProfile(profile);
+            return profile;
+          } catch (e) {
+            debugPrint('[SupabaseService] Failed to fetch profile: $e');
+            final profile = UserProfile(
+              id: user.id,
+              email: user.email ?? 'user@cooktalk.app',
+              fullName: fullName,
+              avatarUrl: avatarUrl,
+              onboardingCompleted: false,
+            );
+            await _saveLocalProfile(profile);
+            return profile;
+          }
         }
         return null;
       } catch (e) {
@@ -327,7 +377,107 @@ class SupabaseService {
     } catch (_) {}
   }
 
+  /// Request Account Deletion with 7-Day Grace Period
+  /// User can cancel within 7 days or by logging in again
+  Future<Map<String, dynamic>> requestAccountDeletion({String? reason}) async {
+    if (!_isSupabaseInitialized || _currentProfile == null) {
+      throw Exception('User not authenticated');
+    }
+
+    try {
+      // Call Supabase function to schedule deletion
+      final response = await Supabase.instance.client.rpc(
+        'request_account_deletion',
+        params: {
+          'p_user_id': _currentProfile!.id,
+          'p_reason': reason,
+        },
+      );
+
+      final result = response as Map<String, dynamic>;
+      
+      if (result['success'] == true) {
+        // Update local profile to reflect scheduled deletion
+        final scheduledAt = DateTime.parse(result['scheduled_deletion_at']);
+        final updated = _currentProfile!.copyWith(
+          // Note: deletion_scheduled_at would need to be added to UserProfile model
+        );
+        await _saveLocalProfile(updated);
+        
+        debugPrint('[SupabaseService] Account deletion scheduled for: $scheduledAt');
+        return {
+          'success': true,
+          'scheduled_deletion_at': scheduledAt,
+          'days_remaining': result['days_remaining'] ?? 7,
+        };
+      } else {
+        throw Exception(result['error'] ?? 'Failed to schedule deletion');
+      }
+    } catch (e) {
+      debugPrint('[SupabaseService] Request deletion error: $e');
+      rethrow;
+    }
+  }
+
+  /// Cancel Account Deletion Request
+  Future<bool> cancelAccountDeletion() async {
+    if (!_isSupabaseInitialized || _currentProfile == null) {
+      return false;
+    }
+
+    try {
+      final response = await Supabase.instance.client.rpc(
+        'cancel_account_deletion',
+        params: {'p_user_id': _currentProfile!.id},
+      );
+
+      final result = response as Map<String, dynamic>;
+      
+      if (result['success'] == true) {
+        debugPrint('[SupabaseService] Account deletion cancelled successfully');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[SupabaseService] Cancel deletion error: $e');
+      return false;
+    }
+  }
+
+  /// Get Deletion Status (if scheduled)
+  Future<Map<String, dynamic>?> getDeletionStatus() async {
+    if (!_isSupabaseInitialized || _currentProfile == null) {
+      return null;
+    }
+
+    try {
+      final response = await Supabase.instance.client.rpc(
+        'get_deletion_status',
+        params: {'p_user_id': _currentProfile!.id},
+      );
+
+      final result = response as Map<String, dynamic>;
+      
+      if (result['deletion_scheduled'] == true) {
+        return {
+          'scheduled_deletion_at': DateTime.parse(result['scheduled_deletion_at']),
+          'days_remaining': result['days_remaining'],
+          'hours_remaining': result['hours_remaining'],
+          'can_cancel': result['can_cancel'] ?? true,
+          'reason': result['reason'],
+        };
+      }
+      
+      return null; // No deletion scheduled
+    } catch (e) {
+      debugPrint('[SupabaseService] Get deletion status error: $e');
+      return null;
+    }
+  }
+
   /// Permanent Account Deletion (Apple App Store Guideline 5.1.1 & Google Play Compliance)
+  /// DEPRECATED: Use requestAccountDeletion() instead for grace period
+  @Deprecated('Use requestAccountDeletion() for 7-day grace period')
   Future<void> deleteAccount() async {
     if (_isSupabaseInitialized && _currentProfile != null) {
       try {
@@ -364,12 +514,45 @@ class SupabaseService {
 
   bool isFavorite(String dishId) => _favoriteIds.contains(dishId);
 
-  void toggleFavorite(String dishId) {
+  /// Load favorites from current user profile into in-memory set
+  void _loadFavoritesFromProfile() {
+    _favoriteIds.clear();
+    if (_currentProfile?.favorites != null) {
+      _favoriteIds.addAll(_currentProfile!.favorites);
+    }
+  }
+
+  /// Sync favorites back to user profile in Supabase
+  Future<void> _syncFavoritesToProfile() async {
+    if (_currentProfile == null) return;
+
+    // Update profile with new favorites list
+    final updated = _currentProfile!.copyWith(favorites: _favoriteIds.toList());
+    
+    if (_isSupabaseInitialized) {
+      try {
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'favorites': _favoriteIds.toList()})
+            .eq('id', _currentProfile!.id);
+        debugPrint('[SupabaseService] Synced ${_favoriteIds.length} favorites to profile');
+      } catch (e) {
+        debugPrint('[SupabaseService] Failed to sync favorites to Supabase: $e');
+      }
+    }
+
+    // Update local profile
+    await _saveLocalProfile(updated);
+  }
+
+  void toggleFavorite(String dishId) async {
     if (_favoriteIds.contains(dishId)) {
       _favoriteIds.remove(dishId);
     } else {
       _favoriteIds.add(dishId);
     }
+    // Sync to database
+    await _syncFavoritesToProfile();
   }
 
   Future<void> recordDishViewedInAI(String dishId) => recordCookHistory(dishId);
@@ -439,37 +622,43 @@ class SupabaseService {
     return result;
   }
 
-  /// Fetch dishes list (from Supabase if connected, else curated seed data + dynamic dishes)
+  /// Fetch favorite dishes for current user
+  Future<List<Dish>> fetchFavoriteDishes() async {
+    final all = await fetchDishes();
+    final favoriteIds = _currentProfile?.favorites ?? [];
+    return all.where((d) => favoriteIds.contains(d.id)).toList();
+  }
+
+  /// Fetch dishes list (ALL dishes globally shared, user_id as attribution only)
   Future<List<Dish>> fetchDishes({String? category}) async {
     List<Dish> catalog = [];
-    if (_isSupabaseInitialized) {
+    if (_isSupabaseInitialized && _currentProfile != null) {
       try {
-        var query = Supabase.instance.client.from('dishes').select();
+        // Query ALL dishes globally - user_id is attribution only, NOT a visibility gate
+        var query = Supabase.instance.client
+            .from('dishes')
+            .select();
+        
         if (category != null && category.toLowerCase() != 'more') {
           query = query.eq('category', category.toLowerCase());
         }
+        
         final data = await query;
         catalog = (data as List).map((e) => Dish.fromJson(e)).toList();
-      } catch (e) {
-        debugPrint('[SupabaseService] Query dishes failed: $e');
-      }
-    }
-
-    if (catalog.isEmpty) {
-      catalog = [..._seedDishes, ..._dynamicDishes];
-      if (category != null && category.toLowerCase() != 'more') {
-        catalog = catalog
-            .where((d) => d.category.toLowerCase() == category.toLowerCase())
-            .toList();
-      }
-    } else {
-      for (final dyn in _dynamicDishes) {
-        if (!catalog.any((c) => c.id == dyn.id || c.normalizedName == dyn.normalizedName)) {
-          catalog.add(dyn);
+        
+        // Add any dynamic dishes created locally
+        for (final dyn in _dynamicDishes) {
+          if (!catalog.any((c) => c.id == dyn.id || c.normalizedName == dyn.normalizedName)) {
+            catalog.add(dyn);
+          }
         }
+      } catch (e) {
+        debugPrint('[SupabaseService] Query user dishes failed: $e');
+        // Return empty list if query fails
+        return [];
       }
     }
-
+    // If Supabase not initialized or user not logged in, return empty
     return catalog;
   }
 
@@ -487,7 +676,7 @@ class SupabaseService {
     }
   }
 
-  /// Call server-side generation endpoint for genuinely new dishes
+  /// Call server-side generation endpoint for genuinely new dishes and save to Supabase
   Future<Dish> generateDishViaServer(String query, String serverUrl) async {
     final uri = Uri.parse('$serverUrl/api/generate-dish');
     final response = await http.post(
@@ -503,9 +692,27 @@ class SupabaseService {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final dish = Dish.fromJson(data);
 
-    // Cache locally in dynamic dishes
-    if (!_dynamicDishes.any((d) => d.id == dish.id || d.normalizedName == dish.normalizedName)) {
-      _dynamicDishes.add(dish);
+    // Save to Supabase dishes table with user_id
+    if (_isSupabaseInitialized && _currentProfile != null) {
+      try {
+        final dishData = dish.toJson();
+        dishData['user_id'] = _currentProfile!.id;
+        dishData['created_at'] = DateTime.now().toIso8601String();
+        
+        await Supabase.instance.client.from('dishes').insert(dishData);
+        debugPrint('[SupabaseService] Saved generated dish to Supabase for user: ${_currentProfile!.id}');
+      } catch (e) {
+        debugPrint('[SupabaseService] Failed to save dish to Supabase: $e');
+        // Cache locally as fallback
+        if (!_dynamicDishes.any((d) => d.id == dish.id || d.normalizedName == dish.normalizedName)) {
+          _dynamicDishes.add(dish);
+        }
+      }
+    } else {
+      // Cache locally in dynamic dishes if Supabase not available
+      if (!_dynamicDishes.any((d) => d.id == dish.id || d.normalizedName == dish.normalizedName)) {
+        _dynamicDishes.add(dish);
+      }
     }
 
     return dish;

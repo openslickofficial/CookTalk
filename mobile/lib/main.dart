@@ -9,6 +9,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:audio_session/audio_session.dart';
 import 'services/supabase_service.dart';
 import 'models/user_profile.dart';
 import 'screens/onboarding_screen.dart';
@@ -697,12 +698,12 @@ class _PreSessionScreenState extends State<PreSessionScreen> {
 
 class InSessionScreen extends StatefulWidget {
   final String serverUrl;
-  final RecipeItem initialRecipe;
+  final RecipeItem? initialRecipe;
 
   const InSessionScreen({
     super.key,
     required this.serverUrl,
-    required this.initialRecipe,
+    this.initialRecipe,
   });
 
   @override
@@ -719,16 +720,16 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
   AgentVoiceState _voiceState = AgentVoiceState.connecting;
   String _statusLine = 'Connecting to kitchen LiveKit room...';
   
-  // Dynamic connecting messages
+  // Dynamic connecting messages (TASK 2: Removed emojis, replaced with icons)
   final List<String> _connectingMessages = [
-    'Firing up the AI chef... 🔥',
-    'Preheating your voice assistant... 🎙️',
-    'Warming up the kitchen co-pilot... 👨‍🍳',
-    'Preparing your sous-chef... ✨',
-    'Loading culinary intelligence... 🧠',
-    'Activating voice recognition... 🎯',
-    'Connecting to cooking brain... 🤖',
-    'Getting ingredients ready... 🥘',
+    'Firing up the AI chef...',
+    'Preheating your voice assistant...',
+    'Warming up the kitchen co-pilot...',
+    'Preparing your sous-chef...',
+    'Loading culinary intelligence...',
+    'Activating voice recognition...',
+    'Connecting to cooking brain...',
+    'Getting ingredients ready...',
   ];
   int _connectingMessageIndex = 0;
   Timer? _connectingMessageTimer;
@@ -766,18 +767,32 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
+    
+    // Configure audio session for background playback (timer alerts)
+    _configureAudioSession();
+    
     try {
       WakelockPlus.enable();
     } catch (e) {
       debugPrint('[Wakelock] Enable error: $e');
     }
-    _recipeName = widget.initialRecipe.name;
-    _totalSteps = widget.initialRecipe.totalSteps > 0 ? widget.initialRecipe.totalSteps : 5;
-    if (widget.initialRecipe.steps.isNotEmpty) {
-      final first = widget.initialRecipe.steps.first;
-      _currentInstruction = first['instruction'] as String? ?? 'Ready to begin!';
+    
+    // Handle null recipe (no recipe selected)
+    if (widget.initialRecipe != null) {
+      _recipeName = widget.initialRecipe!.name;
+      _totalSteps = widget.initialRecipe!.totalSteps > 0 ? widget.initialRecipe!.totalSteps : 5;
+      if (widget.initialRecipe!.steps.isNotEmpty) {
+        final first = widget.initialRecipe!.steps.first;
+        _currentInstruction = first['instruction'] as String? ?? 'Ready to begin!';
+      }
+      _lastAgentUtterance = 'Hey Chef! I\'ve got your ${widget.initialRecipe!.name} ready. Ask "What are the ingredients?" or "Next step".';
+    } else {
+      _recipeName = 'Ask me what you want to cook';
+      _totalSteps = 0;
+      _currentInstruction = 'Tell me what recipe you\'d like to make, or ask me for suggestions!';
+      _lastAgentUtterance = 'Hey Chef! What would you like to cook today?';
     }
-    _lastAgentUtterance = 'Hey Chef! I\'ve got your ${widget.initialRecipe.name} ready. Ask "What are the ingredients?" or "Next step".';
+    
     _waveAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -833,6 +848,29 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
   }
   
   // TASK 8: Real audio amplitude monitoring for waveform
+  Future<void> _configureAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playback,
+        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.mixWithOthers,
+        avAudioSessionMode: AVAudioSessionMode.spokenAudio,
+        avAudioSessionRouteSharingPolicy: AVAudioSessionRouteSharingPolicy.defaultPolicy,
+        avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+        androidAudioAttributes: AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.speech,
+          flags: AndroidAudioFlags.none,
+          usage: AndroidAudioUsage.voiceCommunication,
+        ),
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+        androidWillPauseWhenDucked: false,
+      ));
+      debugPrint('[AudioSession] Configured for background playback');
+    } catch (e) {
+      debugPrint('[AudioSession] Configuration error: $e');
+    }
+  }
+
   void _startAudioLevelMonitoring() {
     _audioLevelTimer = Timer.periodic(const Duration(milliseconds: 100), (_) async {
       if (!mounted || _room == null) return;
@@ -967,24 +1005,26 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
       }
 
       // 5. Send initial recipe selection packet so agent aligns immediately
-      final isFirstTime = !SupabaseService.instance.hasCookedBefore(widget.initialRecipe.id);
-      await SupabaseService.instance.recordCookHistory(widget.initialRecipe.id);
+      if (widget.initialRecipe != null) {
+        final isFirstTime = !SupabaseService.instance.hasCookedBefore(widget.initialRecipe!.id);
+        await SupabaseService.instance.recordCookHistory(widget.initialRecipe!.id);
 
-      try {
-        final selectPacket = utf8.encode(jsonEncode({
-          'type': 'select_recipe',
-          'recipe_id': widget.initialRecipe.id,
-          'recipe_name': widget.initialRecipe.name,
-          'description': widget.initialRecipe.description,
-          'total_steps': widget.initialRecipe.totalSteps,
-          'steps': widget.initialRecipe.steps,
-          'ingredients': widget.initialRecipe.ingredients,
-          'verified': widget.initialRecipe.verified,
-          'is_first_time': isFirstTime,
-        }));
-        await room.localParticipant?.publishData(selectPacket);
-      } catch (e) {
-        debugPrint('[InSession] Initial select_recipe error: $e');
+        try {
+          final selectPacket = utf8.encode(jsonEncode({
+            'type': 'select_recipe',
+            'recipe_id': widget.initialRecipe!.id,
+            'recipe_name': widget.initialRecipe!.name,
+            'description': widget.initialRecipe!.description,
+            'total_steps': widget.initialRecipe!.totalSteps,
+            'steps': widget.initialRecipe!.steps,
+            'ingredients': widget.initialRecipe!.ingredients,
+            'verified': widget.initialRecipe!.verified,
+            'is_first_time': isFirstTime,
+          }));
+          await room.localParticipant?.publishData(selectPacket);
+        } catch (e) {
+          debugPrint('[InSession] Initial select_recipe error: $e');
+        }
       }
 
       setState(() {
@@ -1170,9 +1210,9 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
   String _getVoiceBadgeLabel() {
     switch (_voiceState) {
       case AgentVoiceState.connecting:
-        // Show short version of current connecting message
+        // Show short version of current connecting message (TASK 2: Emoji regex no longer needed)
         final msg = _connectingMessages[_connectingMessageIndex];
-        return msg.replaceAll('...', '').replaceAll(RegExp(r' [🔥🎙️👨‍🍳✨🧠🎯🤖🥘]'), '').toUpperCase();
+        return msg.replaceAll('...', '').toUpperCase();
       case AgentVoiceState.listening:
         return 'LISTENING (MIC ACTIVE)';
       case AgentVoiceState.speaking:
@@ -1194,64 +1234,8 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
 
         return Column(
           children: [
-            const SizedBox(height: 8),
-            // Central Voice Orb with breathing glow
-            SizedBox(
-              width: 140,
-              height: 140,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Transform.scale(
-                    scale: _isReducedMotion ? 1.0 : pulseScale, // TASK 8: Respect reduced motion
-                    child: Container(
-                      width: 124,
-                      height: 124,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: stateColor.withValues(alpha: isSpeaking ? 0.20 : (isListening ? 0.14 : 0.08)),
-                        border: Border.all(
-                          color: stateColor.withValues(alpha: isSpeaking ? 0.55 : 0.30),
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Container(
-                    width: 90,
-                    height: 90,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          stateColor.withValues(alpha: 0.38),
-                          stateColor.withValues(alpha: 0.12),
-                        ],
-                      ),
-                      border: Border.all(
-                        color: stateColor,
-                        width: isSpeaking ? 3 : 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: stateColor.withValues(alpha: isSpeaking ? 0.40 : 0.22),
-                          blurRadius: 18,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      isSpeaking
-                          ? Icons.volume_up_rounded
-                          : (isListening ? Icons.mic_rounded : Icons.mic_none_rounded),
-                      size: 44,
-                      color: stateColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 24),
+            // TASK 4 FIX: Removed large mic circle - waveform is now primary visual
 
             // Dynamic Waveform (9 Frequency Bars) - TASK 8: Amplitude-reactive
             SizedBox(
@@ -1423,19 +1407,6 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                   },
                 ),
                 const SizedBox(width: 16),
-
-                // Latency Demo Toggle
-                IconButton(
-                  tooltip: _showLatencyDemo ? 'Hide latency demo stats' : 'Show latency demo stats',
-                  icon: Icon(
-                    _showLatencyDemo ? Icons.speed_rounded : Icons.speed_outlined,
-                    color: _showLatencyDemo ? CookTalkTheme.speakingAccent : Colors.grey,
-                    size: 22,
-                  ),
-                  onPressed: () {
-                    setState(() => _showLatencyDemo = !_showLatencyDemo);
-                  },
-                ),
               ],
             ),
           ],
@@ -1445,9 +1416,12 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
   }
 
   Widget _buildDishThumbnail(bool isDark) {
-    final curatedImg = widget.initialRecipe.imageUrl ??
-        SupabaseService.instance.getDishImageUrl(widget.initialRecipe.id);
-    final isCuratedOrVerified = widget.initialRecipe.verified || curatedImg != null;
+    if (widget.initialRecipe == null) {
+      return _buildPlaceholderThumbnail(isDark, true);
+    }
+    final curatedImg = widget.initialRecipe!.imageUrl ??
+        SupabaseService.instance.getDishImageUrl(widget.initialRecipe!.id);
+    final isCuratedOrVerified = widget.initialRecipe!.verified || curatedImg != null;
 
     if (isCuratedOrVerified && curatedImg != null && curatedImg.isNotEmpty) {
       return ClipRRect(
@@ -1462,7 +1436,7 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
       );
     }
 
-    return _buildPlaceholderThumbnail(isDark, !widget.initialRecipe.verified);
+    return _buildPlaceholderThumbnail(isDark, !widget.initialRecipe!.verified);
   }
 
   Widget _buildPlaceholderThumbnail(bool isDark, bool isAiGenerated) {
@@ -1611,7 +1585,9 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
               ],
 
               // 2. STEP INSTRUCTION CARD (Lime Badge + Large 24pt Bold Text + Dish Thumbnail)
-              Card(
+              // TASK 1 FIX: Conditional rendering - only show full card when recipe is active
+              if (_totalSteps > 0)
+                Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
@@ -1654,7 +1630,7 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                                         runSpacing: 4,
                                         crossAxisAlignment: WrapCrossAlignment.center,
                                         children: [
-                                          if (widget.initialRecipe.verified)
+                                          if (widget.initialRecipe != null && widget.initialRecipe!.verified)
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                               decoration: BoxDecoration(
@@ -1685,7 +1661,7 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                                                 ],
                                               ),
                                             )
-                                          else
+                                          else if (widget.initialRecipe != null && !widget.initialRecipe!.verified)
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                               decoration: BoxDecoration(
@@ -1716,7 +1692,7 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                                                 ],
                                               ),
                                             ),
-                                          if (SupabaseService.instance.hasCookedBefore(widget.initialRecipe.id))
+                                          if (widget.initialRecipe != null && SupabaseService.instance.hasCookedBefore(widget.initialRecipe!.id))
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                               decoration: BoxDecoration(
@@ -1784,7 +1760,33 @@ class _InSessionScreenState extends State<InSessionScreen> with SingleTickerProv
                     ],
                   ),
                 ),
-              ),
+              )
+              else
+                // TASK 1 FIX: Empty state - minimal card with just instruction text
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: isDark ? const Color(0xFF282E3D) : const Color(0xFFECEFE8),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Center(
+                      child: Text(
+                        'Ask me to start a recipe, or say "help" to hear what I can do',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
 
               // 3. MULTI-TIMER SECTION (Material vector icons + [Label]: [MM:SS] [ Cancel ])

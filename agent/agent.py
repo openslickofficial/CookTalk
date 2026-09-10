@@ -341,15 +341,20 @@ class CookingCoPilot:
 
     def __init__(self, recipes: dict):
         self.recipes = recipes
-        self.active_recipe_id = "scrambled_eggs"
-        self.current_step_index = 1
+        self.active_recipe_id = None  # Start with no recipe loaded
+        self.current_step_index = 0  # 0 indicates no active recipe
         self.session: AgentSession | None = None
         self.room: rtc.Room | None = None
         self.active_timers: dict[str, asyncio.Task] = {}
         self.active_timer_metadata: dict[str, dict] = {}
         self.has_explicit_recipe = False
         self._timer_alert_lock = asyncio.Lock()
-        self._agent_speaking_lock = asyncio.Lock()  # NEW: Track agent speaking state for TASK 6
+        self._agent_speaking_lock = asyncio.Lock()
+        
+        # TASK 2: Idle session timeout tracking
+        self._last_user_speech_time: float = time.time()
+        self._idle_monitor_task: asyncio.Task | None = None
+        self._idle_timeout_seconds: float = 300.0  # 5 minutes
         
         # Dietary & Pantry Allergy Safeguard
         self.user_allergies: list[str] = []
@@ -367,15 +372,44 @@ class CookingCoPilot:
         """
         Real-time safety check for ingredient against user allergies.
         Returns: (is_safe, warning_message)
+        
+        WARNING: This uses basic string matching + common synonyms.
+        It is NOT a substitute for reading ingredient labels yourself.
         """
+        # Common allergen synonyms (major allergens FDA Top 9)
+        ALLERGEN_SYNONYMS = {
+            'peanut': ['peanut', 'groundnut', 'arachis', 'goober', 'monkey nut'],
+            'tree nut': ['almond', 'cashew', 'walnut', 'pecan', 'pistachio', 'hazelnut', 'macadamia', 'brazil nut', 'pine nut'],
+            'milk': ['milk', 'dairy', 'casein', 'whey', 'lactose', 'butter', 'cream', 'cheese', 'yogurt', 'ghee'],
+            'egg': ['egg', 'albumin', 'lysozyme', 'ovalbumin', 'ovomucin'],
+            'soy': ['soy', 'soya', 'edamame', 'tofu', 'tempeh', 'miso', 'natto', 'lecithin'],
+            'wheat': ['wheat', 'flour', 'gluten', 'semolina', 'spelt', 'farina', 'graham', 'durum'],
+            'fish': ['fish', 'anchovy', 'bass', 'cod', 'flounder', 'halibut', 'salmon', 'tuna', 'trout'],
+            'shellfish': ['shellfish', 'shrimp', 'crab', 'lobster', 'crayfish', 'prawn', 'clam', 'mussel', 'oyster', 'scallop'],
+            'sesame': ['sesame', 'tahini', 'benne', 'gingelly', 'til'],
+        }
+        
         ing_lower = ingredient.lower().strip()
         
         # Check severe allergies first (highest priority)
         for allergen in self.user_allergies:
-            if allergen in ing_lower or ing_lower in allergen:
+            allergen_lower = allergen.lower().strip()
+            
+            # Direct match
+            if allergen_lower in ing_lower or ing_lower in allergen_lower:
                 warning = f"CAUTION: Your profile lists a severe {allergen} allergy. Do NOT use {ingredient}."
-                logger.warning(f"[ALLERGY SAFEGUARD] ⚠️ BLOCKED dangerous ingredient: {ingredient} (allergen: {allergen})")
+                logger.warning(f"[ALLERGY SAFEGUARD] [!] BLOCKED dangerous ingredient: {ingredient} (allergen: {allergen})")
                 return (False, warning)
+            
+            # Synonym match
+            for category, synonyms in ALLERGEN_SYNONYMS.items():
+                if allergen_lower in synonyms or any(syn in allergen_lower for syn in synonyms):
+                    # User's allergen matches this category, check ingredient against all synonyms
+                    for syn in synonyms:
+                        if syn in ing_lower:
+                            warning = f"CAUTION: Your profile lists a severe {allergen} allergy. {ingredient} contains {syn}. Do NOT use it."
+                            logger.warning(f"[ALLERGY SAFEGUARD] [!] BLOCKED dangerous ingredient: {ingredient} (synonym: {syn}, allergen: {allergen})")
+                            return (False, warning)
         
         return (True, None)
 
@@ -401,6 +435,76 @@ class CookingCoPilot:
 
     def set_room(self, room: rtc.Room) -> None:
         self.room = room
+    
+    def record_user_speech(self) -> None:
+        """Record user speech activity to reset idle timer."""
+        self._last_user_speech_time = time.time()
+    
+    def start_idle_monitor(self) -> None:
+        """
+        TASK 2: Start background idle session monitor.
+        
+        Timeout: 5 minutes (300 seconds) of no user speech AND no active timers.
+        
+        Rationale: Protects LiveKit budget (1,000 min/month) from abandoned sessions
+        while allowing legitimate timer-waiting scenarios. 5 minutes balances:
+        - Short enough to catch abandoned sessions quickly
+        - Long enough for user to check recipe on phone, wash hands, prep ingredients
+        - Does NOT interrupt active timer countdowns (even if silent)
+        """
+        if self._idle_monitor_task and not self._idle_monitor_task.done():
+            return
+        
+        async def _idle_monitor_loop():
+            logger.info(f"[IDLE MONITOR] Started. Timeout: {self._idle_timeout_seconds}s (no speech + no timers).")
+            while True:
+                try:
+                    await asyncio.sleep(30.0)  # Check every 30 seconds
+                    
+                    # If active timers running, NOT idle (even if no speech)
+                    if self.active_timers:
+                        continue
+                    
+                    # Calculate idle duration since last user speech
+                    idle_duration = time.time() - self._last_user_speech_time
+                    
+                    # If exceeded threshold with no timers, disconnect
+                    if idle_duration >= self._idle_timeout_seconds:
+                        logger.warning(f"[IDLE MONITOR] Session idle for {idle_duration:.1f}s with no active timers. Ending session.")
+                        
+                        if self.session:
+                            try:
+                                await self.session.say(
+                                    "Hey Chef, you've been quiet for a while and no timers are running. I'm closing this session to save resources. Come back anytime!",
+                                    allow_interruptions=False,
+                                    add_to_chat_ctx=True,
+                                )
+                                await asyncio.sleep(2.0)  # Let message finish
+                            except Exception as e:
+                                logger.debug(f"[IDLE MONITOR] Could not speak goodbye: {e}")
+                        
+                        await self.broadcast({
+                            "type": "session_ended",
+                            "message": "Session ended due to inactivity",
+                            "reason": "idle_timeout"
+                        })
+                        
+                        # Signal session should close
+                        break
+                        
+                except asyncio.CancelledError:
+                    logger.info("[IDLE MONITOR] Monitor cancelled.")
+                    break
+                except Exception as e:
+                    logger.debug(f"[IDLE MONITOR] Check error: {e}")
+        
+        self._idle_monitor_task = asyncio.create_task(_idle_monitor_loop())
+    
+    def stop_idle_monitor(self) -> None:
+        """Stop idle monitor (called on explicit session end)."""
+        if self._idle_monitor_task:
+            self._idle_monitor_task.cancel()
+            self._idle_monitor_task = None
 
     def speak_acknowledgment(self, tool_name: str) -> None:
         """Trigger an immediate spoken acknowledgment via Rime when tool execution starts."""
@@ -440,7 +544,9 @@ class CookingCoPilot:
 
     @property
     def active_recipe(self) -> dict:
-        return self.recipes.get(self.active_recipe_id, self.recipes.get("scrambled_eggs", {}))
+        if self.active_recipe_id is None:
+            return {}  # Return empty dict when no recipe is active
+        return self.recipes.get(self.active_recipe_id, {})
 
     def get_tools(self) -> list[llm.FunctionTool]:
         copilot = self
@@ -492,7 +598,9 @@ class CookingCoPilot:
                     "instruction": steps[0]["instruction"] if steps else "",
                 })
                 return f"Switched to {recipe['name']}. We are at Step 1: {recipe['steps'][0]['instruction']}"
-            return f"'{recipe_name_or_id}' is not in the preset card catalog, but you can guide the chef directly using your culinary knowledge!"
+            
+            # TASK 1: Clean decline for unmatched dishes (no improvised guidance, no generation)
+            return f"I don't have {recipe_name_or_id} in my recipe catalog. Pick a dish from the app and we'll start cooking together."
 
         @llm.function_tool
         @track_tool
@@ -591,7 +699,8 @@ class CookingCoPilot:
                 for ing in r.get("ingredients", []):
                     if target in ing["name"].lower() or ing["name"].lower() in target:
                         return f"{ing['quantity']} {ing['unit']} in {r['name']}"
-            return f"{ingredient_name.title()} is not in the active recipe card. Use your culinary knowledge to advise the chef."
+            # TASK 3 FIX: Add grounding signal for unverified quantities
+            return f"I don't have {ingredient_name.title()} in my saved recipes. If you know typical proportions, answer with 'Generally' or 'Typically' to signal this is from culinary knowledge, not the active recipe."
 
         @llm.function_tool
         @track_tool
@@ -639,7 +748,13 @@ class CookingCoPilot:
                 options_str = " or ".join(candidates[:3])  # Limit to 3 options for voice clarity
                 return f"For {ingredient_name}: try {options_str}"
             
-            return f"No preset substitution found for {ingredient_name}. Based on your dietary profile, I recommend consulting your culinary knowledge for a safe swap."
+            # TASK 2 FIX: Fallback to LLM, but add uncertainty signal + allergen warning
+            allergen_warning = ""
+            if copilot.user_allergies:
+                allergen_list = ", ".join(copilot.user_allergies)
+                allergen_warning = f" IMPORTANT: Please verify any suggestion against your allergy profile ({allergen_list}) before using it - I can't filter improvised substitutions."
+            
+            return f"I don't have {ingredient_name} in my recipe database.{allergen_warning} You can suggest common culinary alternatives, but prefix with 'Generally,' to signal this is ungrounded knowledge."
 
         @llm.function_tool
         @track_tool
@@ -649,10 +764,12 @@ class CookingCoPilot:
             
             if not is_safe:
                 # Immediate high-priority safety warning via Rime
-                logger.error(f"[ALLERGY SAFEGUARD] 🚨 USER PROPOSED DANGEROUS INGREDIENT: {ingredient_name}")
-                return warning
+                logger.error(f"[ALLERGY SAFEGUARD] WARNING USER PROPOSED DANGEROUS INGREDIENT: {ingredient_name}")
+                # Add disclaimer to every warning
+                return f"{warning} Remember, this is a best-effort check and not a substitute for reading ingredient labels yourself."
             
-            return f"{ingredient_name} appears safe based on your dietary profile. Go ahead and use it!"
+            # Add disclaimer even when safe
+            return f"{ingredient_name} appears safe based on your dietary profile, but this is a best-effort check only. Always verify ingredients yourself when you have severe allergies."
 
         @llm.function_tool
         @track_tool
@@ -694,6 +811,8 @@ class CookingCoPilot:
                                     add_to_chat_ctx=True,
                                 )
                                 await asyncio.sleep(0.4)
+                                # TASK 2 FIX: Reset idle clock after timer alert so user gets fresh 5-min window
+                                copilot.record_user_speech()
                 except asyncio.CancelledError:
                     logger.info(f"[TIMER CANCELLED] Timer '{clean_label}' was cancelled.")
                 except Exception as e:
@@ -853,6 +972,8 @@ class CookingCoPilot:
                                     add_to_chat_ctx=True,
                                 )
                                 await asyncio.sleep(0.4)
+                                # TASK 2 FIX: Reset idle clock after timer alert (modify_timer path)
+                                copilot.record_user_speech()
                 except asyncio.CancelledError:
                     logger.info(f"[TIMER CANCELLED] Timer '{target_label}' cancelled.")
                 except Exception as e:
@@ -934,6 +1055,8 @@ class CookingCoPilot:
                                     add_to_chat_ctx=True,
                                 )
                                 await asyncio.sleep(0.4)
+                                # TASK 2 FIX: Reset idle clock after timer alert (extend_timer path)
+                                copilot.record_user_speech()
                 except asyncio.CancelledError:
                     logger.info(f"[TIMER CANCELLED] Timer '{target_label}' cancelled.")
                 except Exception as e:
@@ -1010,27 +1133,12 @@ class CookingCoPilot:
                 return f"Wait! You still have {timer_count} active timer{'s' if timer_count > 1 else ''} running ({timer_list}). End session anyway? Say 'yes' to confirm or 'cancel' to keep cooking."
             
             # No active timers - safe to end
+            copilot.stop_idle_monitor()  # TASK 2: Stop idle monitor on explicit session end
             await copilot.broadcast({
                 "type": "session_ended",
                 "message": "Session ended by user"
             })
             return "Happy cooking! See you next time."
-                task.cancel()
-                logger.info(f"[TIMER CANCELLED] Manually cancelled timer for '{target_label}'.")
-                await copilot.broadcast({
-                    "type": "timer_cancelled",
-                    "label": target_label,
-                })
-                return f"Cancelled the timer for {target_label}."
-            elif target_label:
-                copilot.active_timer_metadata.pop(target_label, None)
-                await copilot.broadcast({
-                    "type": "timer_cancelled",
-                    "label": target_label,
-                })
-                return f"Cancelled the timer for {target_label}."
-
-            return "No matching timer found to cancel."
 
         @llm.function_tool
         @track_tool
@@ -1063,7 +1171,8 @@ class CookingCoPilot:
                     return f"Key ingredients for {recipe['name']}: {main_ings}, plus {remainder} other items. Offer to share the full list."
                 return f"Ingredients for {recipe['name']}: {main_ings}."
 
-            return f"Dish '{recipe_name_or_id}' is not in the preset card catalog. List the 2-3 most essential ingredients conversationally from your culinary knowledge."
+            # TASK 3 FIX: Add grounding signal for dishes not in catalog
+            return f"I don't have {recipe_name_or_id} in my recipe catalog. If you know the essential ingredients from culinary experience, share them but start with 'Generally you'll need' or 'Typically' to signal this isn't from verified recipe data."
 
         return [
             set_active_recipe,
@@ -1589,6 +1698,7 @@ async def entrypoint(ctx: JobContext):
     def on_transcription(ev: UserInputTranscribedEvent):
         if ev.is_final:
             metrics_manager.record_user_transcript(ev.transcript)
+            copilot.record_user_speech()  # TASK 2: Reset idle timer on user speech
 
     @session.on("conversation_item_added")
     def on_conversation_item(ev: ConversationItemAddedEvent):
@@ -1735,46 +1845,60 @@ async def entrypoint(ctx: JobContext):
             logger.debug(f"[DATA PACKET NOTICE] {e}")
 
     agent = CookTalkAgent(tools=tools)
-    await session.start(room=ctx.room, agent=agent)
-    logger.info("CookTalk AgentSession started and ready for speech.")
+    
+    # TASK 1 FIX: Wrap session in try/finally to ensure monitor cleanup on ALL exit paths
+    try:
+        await session.start(room=ctx.room, agent=agent)
+        logger.info("CookTalk AgentSession started and ready for speech.")
+        
+        # TASK 2: Start idle session monitor
+        copilot.start_idle_monitor()
 
-    is_benchmark_room = any(ctx.room.name.startswith(p) for p in ("bench-", "diag-", "perf-", "regression-", "smoke-"))
-    if not is_benchmark_room:
-        async def _greet_chef():
-            try:
-                if not ctx.room.remote_participants:
-                    logger.info("[AGENT GREETING] Waiting for chef to join room...")
-                    await ctx.wait_for_participant()
-                # Wait up to 4.5s for client to join and send select_recipe
-                for _ in range(45):
+        is_benchmark_room = any(ctx.room.name.startswith(p) for p in ("bench-", "diag-", "perf-", "regression-", "smoke-"))
+        if not is_benchmark_room:
+            async def _greet_chef():
+                try:
+                    if not ctx.room.remote_participants:
+                        logger.info("[AGENT GREETING] Waiting for chef to join room...")
+                        await ctx.wait_for_participant()
+                    # Wait up to 4.5s for client to join and send select_recipe
+                    for _ in range(45):
+                        if getattr(copilot, "has_explicit_recipe", False):
+                            logger.info("[AGENT GREETING] Recipe already selected by client; skipping generic greeting.")
+                            return
+                        await asyncio.sleep(0.1)
+
                     if getattr(copilot, "has_explicit_recipe", False):
                         logger.info("[AGENT GREETING] Recipe already selected by client; skipping generic greeting.")
                         return
-                    await asyncio.sleep(0.1)
+                    logger.info("[AGENT GREETING] Speaking initial generic greeting to chef...")
+                    session.say(
+                        "Hey Chef! I'm CookTalk, your hands-free cooking co-pilot. What are we cooking today?",
+                        allow_interruptions=True,
+                        add_to_chat_ctx=True,
+                    )
+                    # Only broadcast recipe state if a recipe is actually loaded
+                    if copilot.active_recipe_id:
+                        recipe = copilot.active_recipe
+                        steps = recipe.get("steps", [])
+                        await copilot.broadcast({
+                            "type": "recipe_state",
+                            "recipe_id": copilot.active_recipe_id,
+                            "recipe_name": recipe.get("name", ""),
+                            "current_step": copilot.current_step_index,
+                            "total_steps": len(steps),
+                            "instruction": steps[copilot.current_step_index - 1]["instruction"] if steps and copilot.current_step_index > 0 else "",
+                        })
+                except Exception as e:
+                    logger.warning(f"[AGENT GREETING] Greeting notice: {e}")
 
-                if getattr(copilot, "has_explicit_recipe", False):
-                    logger.info("[AGENT GREETING] Recipe already selected by client; skipping generic greeting.")
-                    return
-                logger.info("[AGENT GREETING] Speaking initial generic greeting to chef...")
-                session.say(
-                    "Hey Chef! I'm CookTalk, your hands-free cooking co-pilot. What are we cooking today?",
-                    allow_interruptions=True,
-                    add_to_chat_ctx=True,
-                )
-                recipe = copilot.active_recipe
-                steps = recipe.get("steps", [])
-                await copilot.broadcast({
-                    "type": "recipe_state",
-                    "recipe_id": copilot.active_recipe_id,
-                    "recipe_name": recipe.get("name", "Scrambled Eggs"),
-                    "current_step": 1,
-                    "total_steps": len(steps),
-                    "instruction": steps[0]["instruction"] if steps else "",
-                })
-            except Exception as e:
-                logger.warning(f"[AGENT GREETING] Greeting notice: {e}")
-
-        asyncio.create_task(_greet_chef())
+            asyncio.create_task(_greet_chef())
+    
+    finally:
+        # TASK 1 FIX: Always stop idle monitor on session exit (explicit or crash)
+        logger.info("[SESSION CLEANUP] Stopping idle monitor...")
+        copilot.stop_idle_monitor()
+        logger.info("[SESSION CLEANUP] Idle monitor stopped. Session ended.")
 
 
 if __name__ == "__main__":

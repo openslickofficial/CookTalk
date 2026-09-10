@@ -3,6 +3,7 @@ import re
 import time
 import json
 import uuid
+import asyncio
 from pathlib import Path
 from collections import deque
 from dotenv import load_dotenv
@@ -331,7 +332,7 @@ def generate_dish(req: GenerateDishRequest):
         "servings": servings,
         "base_servings": servings,
         "difficulty": parsed_json.get("difficulty", "Medium"),
-        "image_url": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
+        "image_url": None,  # Will be set below
         "is_trending": False,
         "verified": False,
         "source": "ai_generated",
@@ -347,6 +348,30 @@ def generate_dish(req: GenerateDishRequest):
         "steps": formatted_steps,
         "substitutions": parsed_json.get("substitutions", {}),
     }
+    
+    # FETCH DYNAMIC IMAGE: Try to get a real dish-specific image
+    try:
+        from image_service import get_dish_image, get_cached_image_url
+        # Async fetch with timeout - if it fails, use fallback
+        try:
+            dish_payload["image_url"] = await asyncio.wait_for(
+                get_dish_image(title, dish_payload["category"]),
+                timeout=3.0
+            )
+        except asyncio.TimeoutError:
+            # Timeout - use category fallback
+            dish_payload["image_url"] = get_cached_image_url(dish_id, dish_payload["category"])
+    except ImportError:
+        # image_service not available - use category-specific fallback
+        fallback_images = {
+            "breakfast": "https://images.unsplash.com/photo-1525351484163-7529414344d8?auto=format&fit=crop&w=800&q=80",
+            "lunch": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
+            "dinner": "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80",
+            "dessert": "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=800&q=80",
+            "snack": "https://images.unsplash.com/photo-1604467707321-70d5ac45adda?auto=format&fit=crop&w=800&q=80",
+            "default": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
+        }
+        dish_payload["image_url"] = fallback_images.get(dish_payload["category"], fallback_images["default"])
 
     # 6. PERSIST TO DISHES CACHE
     try:

@@ -146,13 +146,13 @@ class AboutScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _buildFeatureItem(
-              '🎙️ Voice-Controlled Cooking',
+              'Voice-Controlled Cooking',
               'Navigate recipes entirely hands-free with natural voice commands',
               isDark,
               bodyTextColor,
             ),
             _buildFeatureItem(
-              '⏲️ Smart Timers',
+              'Smart Timers',
               'Set and manage multiple cooking timers without touching your phone',
               isDark,
               bodyTextColor,
@@ -230,7 +230,7 @@ class AboutScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Center(
               child: Text(
-                'Made with ❤️ for home chefs everywhere',
+                'Made with love for home chefs everywhere',
                 style: TextStyle(
                   fontSize: 12,
                   color: metaTextColor,

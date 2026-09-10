@@ -6,8 +6,18 @@ venv/
 *.jsonl
 dist/
 web/dist/
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.class
+
 # LiveKit environment files (contain secret keys!)
 agent/.env.livekit
+
 # Temporary/duplicate documentation
 *DEPLOY*.md
 !FREE_DEPLOYMENT.md

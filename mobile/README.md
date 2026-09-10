@@ -376,7 +376,43 @@ When a connection problem is detected, the agent speaks a plain notice through t
 
 ---
 
-### K. Design Decision Record
+## 7. Timer Alert Delivery: Background Audio Only
+
+### Audio-Only Timer Alerts (No Push Notifications)
+
+**Design Decision:** Timer alerts are delivered exclusively via **background audio** using LiveKit WebRTC audio, not via local or push notifications.
+
+**How It Works:**
+1. Timer expires server-side in the agent (`agent/agent.py:723`)
+2. Agent calls `copilot.session.say("Ding ding! Your timer for {label} is done.")`
+3. Audio plays through the active LiveKit audio session
+4. Mobile app uses `audio_session` package configured for background playback
+5. iOS: `AVAudioSessionCategory.playback` + `UIBackgroundModes: audio`
+6. Android: `AndroidAudioUsage.voiceCommunication` + `AndroidAudioContentType.speech`
+
+**Background Playback Support:**
+- ✅ **App backgrounded (screen on):** Timer alert plays through phone speaker
+- ✅ **App backgrounded + screen locked:** Timer alert plays through phone speaker
+- ✅ **Bluetooth/wired headphones connected:** Timer alert routes to headphones
+
+**Critical Limitation:**
+- ❌ **If the OS kills the app process** (low memory pressure, force quit, battery optimization), timer alerts will NOT play
+- The timer still runs server-side, but audio playback requires the app process to remain alive (suspended but not terminated)
+- This is a known trade-off of the background-audio-only approach
+
+**Why No Push Notifications?**
+- Avoids notification permission prompts and infrastructure complexity
+- Aligns with voice-first, in-session design (timer alerts are conversational utterances, not system notifications)
+- Background audio provides sufficient coverage for typical cooking session durations (10-30 minutes)
+
+**User Guidance:**
+- Keep the app open (backgrounded) during active cooking
+- Avoid force-quitting the app while timers are running
+- If extended idle time is expected, consider setting a phone timer as backup
+
+---
+
+## 8. Design Decision Record
 
 **Timer-on-Exit:** WARN-AND-CONFIRM pattern chosen over silently keeping timers running post-session. Rationale: Explicit user control prevents accidental timer loss while maintaining kitchen safety.
 

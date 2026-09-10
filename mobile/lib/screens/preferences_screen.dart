@@ -17,18 +17,18 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
   final Set<String> _selectedCuisines = {'Italian', 'Asian', 'American'};
 
   final List<Map<String, dynamic>> _cuisines = [
-    {'name': 'Italian', 'icon': '🍕'},
-    {'name': 'Asian', 'icon': '🥢'},
-    {'name': 'Mexican', 'icon': '🌮'},
-    {'name': 'Indian', 'icon': '🍛'},
-    {'name': 'Mediterranean', 'icon': '🫒'},
-    {'name': 'American', 'icon': '🍔'},
-    {'name': 'French', 'icon': '🥐'},
-    {'name': 'Japanese', 'icon': '🍣'},
-    {'name': 'Thai', 'icon': '🍜'},
-    {'name': 'Middle Eastern', 'icon': '🧆'},
-    {'name': 'Healthy / Clean', 'icon': '🥗'},
-    {'name': 'Seafood', 'icon': '🦐'},
+    {'name': 'Italian', 'icon': ''},
+    {'name': 'Asian', 'icon': ''},
+    {'name': 'Mexican', 'icon': ''},
+    {'name': 'Indian', 'icon': ''},
+    {'name': 'Mediterranean', 'icon': ''},
+    {'name': 'American', 'icon': ''},
+    {'name': 'French', 'icon': ''},
+    {'name': 'Japanese', 'icon': ''},
+    {'name': 'Thai', 'icon': ''},
+    {'name': 'Middle Eastern', 'icon': ''},
+    {'name': 'Healthy / Clean', 'icon': ''},
+    {'name': 'Seafood', 'icon': ''},
   ];
 
   bool get _isValid => _selectedCuisines.length >= 3;
